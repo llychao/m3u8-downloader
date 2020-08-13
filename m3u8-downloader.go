@@ -32,7 +32,7 @@ var (
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
 	nFlag   = flag.Int("n", 16, "下载线程数(max goroutines num)")
 	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + path.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
-	oFlag   = flag.String("o", "output", "定义存放的目录前序(目录名为output)")
+	oFlag   = flag.String("o", "output", "定义存放的目录(目录名为output)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
