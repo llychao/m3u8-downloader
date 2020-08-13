@@ -25,6 +25,8 @@ import (
 const (
 	//HeadTimeout 请求头超时时间
 	HEAD_TIMEOUT = 10 * time.Second
+	//进度条长度
+	progressWidth = 40
 )
 
 var (
@@ -62,7 +64,7 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht定义getHost的类型\n[提醒]:m3u8不要嵌套"
+	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht=apiv2\n[提醒]:如果下载失败，m3u8地址可能存在嵌套"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -96,14 +98,14 @@ func Run() {
 
 	ts_key := getM3u8Key(m3u8Host, m3u8Body)
 	if ts_key != "" {
-		logger.Printf("待解密ts文件key: %s", ts_key)
+		fmt.Printf("待解密ts文件key: %s \n", ts_key)
 	}
 
 	ts_list := getTsList(m3u8Host, m3u8Body)
-	logger.Println("待下载ts文件数量:", len(ts_list))
+	fmt.Println("待下载ts文件数量:", len(ts_list))
 
+	//下载ts
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
-	logger.Printf("下载完成，耗时:%#vs\n", time.Now().Sub(now).Seconds())
 
 	switch runtime.GOOS {
 	case "windows":
@@ -111,8 +113,8 @@ func Run() {
 	default:
 		unix_merge_file(download_dir)
 	}
-
-	logger.Printf("任务完成，耗时:%#vs\n", time.Now().Sub(now).Seconds())
+	DrawProgressBar("Merging",float32(1), progressWidth,"merge.ts")
+	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
 }
 
 //获取m3u8地址的host
@@ -122,10 +124,8 @@ func getHost(Url, ht string) (host string) {
 	switch ht {
 	case "apiv1":
 		host = u.Scheme + "://" + u.Host + path.Dir(u.Path)
-		logger.Printf("host = %s", host)
 	case "apiv2":
 		host = u.Scheme + "://" + u.Host
-		logger.Printf("host = %s", host)
 	}
 	return
 }
@@ -205,6 +205,7 @@ func getFromFile() string {
 }
 
 //下载ts文件
+//modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
 	if isExist, _ := PathExists(curr_path); isExist {
@@ -222,17 +223,31 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		}
 	}
 
+	var origData []byte
 	if key == "" {
-		res.DownloadToFile(curr_path)
+		//res.DownloadToFile(curr_path)
+		origData = res.Bytes()
 	} else {
 		//若加密，解密ts文件 aes 128 cbc pack5
-		origData, err := AesDecrypt(res.Bytes(), []byte(key))
+		origData, err = AesDecrypt(res.Bytes(), []byte(key))
 		if err != nil {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		}
-		ioutil.WriteFile(curr_path, origData, 0666)
 	}
+
+	// https://en.wikipedia.org/wiki/MPEG_transport_stream
+	// Some TS files do not start with SyncByte 0x47, they can not be played after merging,
+	// Need to remove the bytes before the SyncByte 0x47(71).
+	syncByte := uint8(71) //0x47
+	bLen := len(origData)
+	for j := 0; j < bLen; j++ {
+		if origData[j] == syncByte {
+			origData = origData[j:]
+			break
+		}
+	}
+	ioutil.WriteFile(curr_path, origData, 0666)
 }
 
 //Downloader m3u8下载器
@@ -240,6 +255,8 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 	retry := 5
 	var wg sync.WaitGroup
 	limiter := make(chan int, maxGoroutines)
+	tsLen := len(tsList)
+	downloadCount := 0
 
 	for _, ts := range tsList {
 		wg.Add(1)
@@ -250,11 +267,23 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 				<-limiter
 			}()
 			downloadTsFile(ts, downloadDir, key, retryies)
+			downloadCount++
+			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), progressWidth, ts.Name)
 			return
 		}(ts, downloadDir, key, retry)
 	}
 	wg.Wait()
 }
+
+//进度条
+func DrawProgressBar(prefix string, proportion float32, width int, suffix ...string) {
+	pos := int(proportion * float32(width))
+	s := fmt.Sprintf("[%s] %s%*s %6.2f%% \t%s",
+		prefix, strings.Repeat("■", pos), width-pos, "", proportion*100, strings.Join(suffix, ""))
+	fmt.Print("\r" + s)
+}
+
+// ============================== shell相关 ==============================
 
 //执行shell
 func ExecUnixShell(s string) {
@@ -283,19 +312,19 @@ func ExecWinShell(s string) error {
 //windows合并文件
 func win_merge_file(path string) {
 	os.Chdir(path)
-	ExecWinShell("copy /b *.ts new.tmp")
+	ExecWinShell("copy /b *.ts merge.tmp")
 	ExecWinShell("del /Q *.ts")
-	os.Rename("new.tmp", "new.mp4")
+	os.Rename("merge.tmp", "merge.mp4")
 }
 
 //unix合并文件
 func unix_merge_file(path string) {
 	os.Chdir(path)
 	//cmd := `ls  *.ts |sort -t "\." -k 1 -n |awk '{print $0}' |xargs -n 1 -I {} bash -c "cat {} >> new.tmp"`
-	cmd := `cat *.ts >> new.tmp`
+	cmd := `cat *.ts >> merge.tmp`
 	ExecUnixShell(cmd)
 	ExecUnixShell("rm -rf *.ts")
-	os.Rename("new.tmp", "new.mp4")
+	os.Rename("merge.tmp", "merge.mp4")
 }
 
 // ============================== 加解密相关 ==============================
