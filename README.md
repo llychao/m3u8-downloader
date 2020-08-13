@@ -28,7 +28,8 @@ demo:
 
   > darwin/amd64
 
- [点击下载](./Releases)
+ [点击下载](https://github.com/llychao/m3u8-downloader/releases)
+ 
 
 在Linux或者mac平台，如果显示无运行权限，请用chmod 命令进行添加权限
 ```bash
