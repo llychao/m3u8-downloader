@@ -64,7 +64,7 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht=apiv2\n[提醒]:如果下载失败，m3u8地址可能存在嵌套"
+	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht=apiv2\n[提醒]:如果下载失败，m3u8地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -88,8 +88,8 @@ func Run() {
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	} else {
-		download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
-		os.MkdirAll(download_dir, os.ModePerm)
+		//download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
+		//os.MkdirAll(download_dir, os.ModePerm)
 	}
 
 	m3u8Host := getHost(m3u8Url, hostType)
@@ -113,7 +113,10 @@ func Run() {
 	default:
 		unix_merge_file(download_dir)
 	}
-	DrawProgressBar("Merging",float32(1), progressWidth,"merge.ts")
+	os.Rename(download_dir+"/merge.mp4", download_dir+".mp4")
+	os.RemoveAll(download_dir)
+
+	DrawProgressBar("Merging", float32(1), progressWidth, "merge.ts")
 	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
 }
 
@@ -149,7 +152,6 @@ func getM3u8Key(host, html string) (key string) {
 			if !strings.Contains(line, "http") {
 				key_url = fmt.Sprintf("%s/%s", host, key_url)
 			}
-			logger.Println("key_url:", key_url)
 			res, err := grequests.Get(key_url, ro)
 			checkErr(err)
 			if res.StatusCode == 200 {
@@ -207,9 +209,16 @@ func getFromFile() string {
 //下载ts文件
 //modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+	defer func() {
+		if r := recover(); r != nil {
+			//fmt.Println("网络不稳定，正在进行断点持续下载")
+			downloadTsFile(ts, download_dir, key, retries-1)
+		}
+	}()
+
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
 	if isExist, _ := PathExists(curr_path); isExist {
-		logger.Println("[warn] File: " + ts.Name + "already exist")
+		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
 	res, err := grequests.Get(ts.Url, ro)
@@ -250,9 +259,9 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	ioutil.WriteFile(curr_path, origData, 0666)
 }
 
-//Downloader m3u8下载器
+//downloader m3u8下载器
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5
+	retry := 5  //单个ts下载重试次数
 	var wg sync.WaitGroup
 	limiter := make(chan int, maxGoroutines)
 	tsLen := len(tsList)
@@ -341,26 +350,38 @@ func PKCS7UnPadding(origData []byte) []byte {
 	return origData[:(length - unpadding)]
 }
 
-func AesEncrypt(origData, key []byte) ([]byte, error) {
+func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	blockSize := block.BlockSize()
+	var iv []byte
+	if len(ivs) == 0 {
+		iv = key
+	}else{
+		iv = ivs[0]
+	}
 	origData = PKCS7Padding(origData, blockSize)
-	blockMode := cipher.NewCBCEncrypter(block, key[:blockSize])
+	blockMode := cipher.NewCBCEncrypter(block, iv[:blockSize])
 	crypted := make([]byte, len(origData))
 	blockMode.CryptBlocks(crypted, origData)
 	return crypted, nil
 }
 
-func AesDecrypt(crypted, key []byte) ([]byte, error) {
+func AesDecrypt(crypted, key []byte, ivs ...[]byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	blockSize := block.BlockSize()
-	blockMode := cipher.NewCBCDecrypter(block, key[:blockSize])
+	var iv []byte
+	if len(ivs) == 0 {
+		iv = key
+	}else{
+		iv = ivs[0]
+	}
+	blockMode := cipher.NewCBCDecrypter(block, iv[:blockSize])
 	origData := make([]byte, len(crypted))
 	blockMode.CryptBlocks(origData, crypted)
 	origData = PKCS7UnPadding(origData)
