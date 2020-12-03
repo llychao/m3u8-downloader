@@ -87,9 +87,6 @@ func Run() {
 	download_dir = pwd + "/movie/" + movieDir
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
-	} else {
-		//download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
-		//os.MkdirAll(download_dir, os.ModePerm)
 	}
 
 	m3u8Host := getHost(m3u8Url, hostType)
