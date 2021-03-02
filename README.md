@@ -19,6 +19,18 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 
 ## 用法
 
+参数说明：
+
+```
+- u M3U8 地址
+- o 自定义文件名, 默认 output
+- n 下载协程并发数，默认 16
+- ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
+```
+
+默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
+
+
 ### 源码方式
 
 ```bash
@@ -42,17 +54,6 @@ Linux 和 MacOS 和 Windows PowerShell
 ./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
 .\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
 ```
-
-参数说明：
-
-```
-- u M3U8 地址
-- o 文件保存目录, 默认 output
-- n 下载协程并发数，默认 16
-- ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
-```
-
-默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
 
 ## 下载
 
