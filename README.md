@@ -17,9 +17,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 ## 效果展示
 ![demo](./demo.gif)
 
-## 用法
-
-参数说明：
+## 参数说明：
 
 ```
 - u M3U8 地址
@@ -30,6 +28,15 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 
 默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
 
+## 下载
+
+已经编译好的平台有： [点击下载](https://github.com/llychao/m3u8-downloader/releases)
+
+- windows/amd64
+- linux/amd64
+- darwin/amd64
+
+## 用法
 
 ### 源码方式
 
@@ -54,15 +61,6 @@ Linux 和 MacOS 和 Windows PowerShell
 ./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
 .\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
 ```
-
-## 下载
-
-已经编译好的平台有： [点击下载](https://github.com/llychao/m3u8-downloader/releases)
-
-- windows/amd64
-- linux/amd64
-- darwin/amd64
-
 
 ## 问题说明
 
