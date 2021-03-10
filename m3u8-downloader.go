@@ -34,7 +34,8 @@ var (
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
 	nFlag   = flag.Int("n", 16, "下载线程数(max goroutines num)")
 	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + path.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
-	oFlag   = flag.String("o", "output", "定义存放的目录(目录名为output)")
+	oFlag   = flag.String("o", "output", "自定义文件名(默认为output)")
+	cFlag   = flag.String("c", "", "自定义请求cookie")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -75,6 +76,12 @@ func Run() {
 	maxGoroutines := *nFlag
 	hostType := *htFlag
 	movieDir := *oFlag
+	cookie := *cFlag
+
+	//http自定义cookie
+	if cookie != "" {
+		ro.Headers["Cookie"] = cookie
+	}
 
 	if !strings.HasPrefix(m3u8Url, "http") || !strings.Contains(m3u8Url, "m3u8") || m3u8Url == "" {
 		flag.Usage()
@@ -87,6 +94,9 @@ func Run() {
 	download_dir = pwd + "/movie/" + movieDir
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
+	} else {
+		//download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
+		//os.MkdirAll(download_dir, os.ModePerm)
 	}
 
 	m3u8Host := getHost(m3u8Url, hostType)
@@ -260,13 +270,13 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
 	retry := 5  //单个ts下载重试次数
 	var wg sync.WaitGroup
-	limiter := make(chan int, maxGoroutines)
+	limiter := make(chan struct{}, maxGoroutines)	//chan struct 内存占用0 bool占用1
 	tsLen := len(tsList)
 	downloadCount := 0
 
 	for _, ts := range tsList {
 		wg.Add(1)
-		limiter <- 1
+		limiter <- struct{}{}
 		go func(ts TsInfo, downloadDir, key string, retryies int) {
 			defer func() {
 				wg.Done()
