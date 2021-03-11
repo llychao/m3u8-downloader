@@ -24,6 +24,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 - o 自定义文件名, 默认 output
 - n 下载协程并发数，默认 16
 - ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
+- c 自定义请求cookie, 默认空
 ```
 
 默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
@@ -43,7 +44,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 ```bash
 自己编译：go build -o m3u8-downloader
 简洁使用：./m3u8-downloader  -u=http://example.com/index.m3u8
-完整使用：./m3u8-downloader  -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
+完整使用：./m3u8-downloader  -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
 ```
 
 ### 二进制方式:
@@ -57,9 +58,9 @@ Linux 和 MacOS 和 Windows PowerShell
 .\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8
 
 完整使用：
-./m3u8-downloader-v1.0.0-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
-./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
-.\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1
+./m3u8-downloader-v1.0.0-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+.\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
 ```
 
 ## 问题说明
