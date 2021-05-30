@@ -36,6 +36,7 @@ var (
 	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + path.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
 	oFlag   = flag.String("o", "output", "自定义文件名(默认为output)")
 	cFlag   = flag.String("c", "", "自定义请求cookie")
+	sFlag   = flag.Bool("s", false, "是否允许不安全的请求(默认为false)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -77,6 +78,9 @@ func Run() {
 	hostType := *htFlag
 	movieDir := *oFlag
 	cookie := *cFlag
+	insecure := *sFlag
+
+	ro.InsecureSkipVerify = insecure
 
 	//http自定义cookie
 	if cookie != "" {
