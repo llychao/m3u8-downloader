@@ -37,6 +37,7 @@ var (
 	oFlag   = flag.String("o", "output", "自定义文件名(默认为output)")
 	cFlag   = flag.String("c", "", "自定义请求cookie")
 	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认为0)")
+	spFlag	= flag.String("sp", "", "文件保存路径(默认为当前路径)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -46,7 +47,7 @@ var (
 			"Connection":      "keep-alive",
 			"Accept":          "*/*",
 			"Accept-Encoding": "*",
-			"Accept-Language": "zh-Hans;q=1",
+			"Accept-Language": "zh-CN,zh;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5",
 		},
 	}
 )
@@ -58,7 +59,7 @@ type TsInfo struct {
 }
 
 func init() {
-	logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
+	logger = log.New(os.Stdout, "Logger: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 func main() {
@@ -66,9 +67,14 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht=apiv2\n[提醒]:如果下载失败，m3u8地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
+	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n" +
+		"[提醒]:如果下载失败，请使用-ht=apiv2\n" +
+		"[提醒]:如果下载失败，m3u8地址可能存在嵌套\n" +
+		"[提醒]:如果进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
+	// 设置最大逻辑CPU数量,电脑配置显示为8
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	// 开始时间
 	now := time.Now()
 
 	//解析命令行参数
@@ -79,7 +85,9 @@ func Run() {
 	movieDir := *oFlag
 	cookie := *cFlag
 	insecure := *sFlag
+	savePath := *spFlag
 
+	// 非0说明需要安全验证TLS证书
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
@@ -88,16 +96,25 @@ func Run() {
 	if cookie != "" {
 		ro.Headers["Cookie"] = cookie
 	}
-
+	// 假设没有输入任何参数
 	if !strings.HasPrefix(m3u8Url, "http") || !strings.Contains(m3u8Url, "m3u8") || m3u8Url == "" {
-		flag.Usage()
+		logger.Print("Please enter legal parameters")
+		flag.PrintDefaults()
 		return
 	}
 
 	var download_dir string
-	pwd, _ := os.Getwd()
-	//pwd = "/Users/chao/Desktop" //自定义地址
+	var pwd string
+
+	if savePath == "" {
+		// Getwd为获取当前路径
+		pwd, _ = os.Getwd()
+	} else {
+		pwd = savePath
+	}
+	// 存放路径
 	download_dir = pwd + "/movie/" + movieDir
+
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	} else {
@@ -105,21 +122,24 @@ func Run() {
 		//os.MkdirAll(download_dir, os.ModePerm)
 	}
 
+	// 获取host
 	m3u8Host := getHost(m3u8Url, hostType)
-	m3u8Body := getM3u8Body(m3u8Url)
+	m3u8Body := getM3u8Body(m3u8Url)	//获取到m3u8的内容
 	//m3u8Body := getFromFile()
 
+	//获取解析密钥
 	ts_key := getM3u8Key(m3u8Host, m3u8Body)
 	if ts_key != "" {
 		fmt.Printf("待解密ts文件key: %s \n", ts_key)
 	}
-
+	//返回ts_List(索引和url)
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载ts文件数量:", len(ts_list))
 
 	//下载ts
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
 
+	// 判断运行环境
 	switch runtime.GOOS {
 	case "windows":
 		win_merge_file(download_dir)
@@ -130,6 +150,7 @@ func Run() {
 	os.RemoveAll(download_dir)
 
 	DrawProgressBar("Merging", float32(1), progressWidth, "merge.ts")
+	// time.Now().Sub(now).Seconds() 现在时间减去 开始的 now时间 转化为seconds
 	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
 }
 
@@ -148,6 +169,7 @@ func getHost(Url, ht string) (host string) {
 
 //获取m3u8地址的内容体
 func getM3u8Body(Url string) string {
+	// 配置header信息
 	r, err := grequests.Get(Url, ro)
 	checkErr(err)
 	return r.String()
@@ -155,26 +177,26 @@ func getM3u8Body(Url string) string {
 
 //获取m3u8加密的密钥
 func getM3u8Key(host, html string) (key string) {
-	lines := strings.Split(html, "\n")
+	lines := strings.Split(html, "\n") //得到字符串数组分割每一行
 	key = ""
 	for _, line := range lines {
-		if strings.Contains(line, "#EXT-X-KEY") {
-			uri_pos := strings.Index(line, "URI")
-			quotation_mark_pos := strings.LastIndex(line, "\"")
-			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
+		if strings.Contains(line, "#EXT-X-KEY") { //提取#EXT-X-KEY这一行的内容
+			uri_pos := strings.Index(line, "URI") //返回存在URI的索引
+			quotation_mark_pos := strings.LastIndex(line, "\"") //返回最后一个冒号的索引
+			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1] // 截取URL内部的xxx.ts的内容
 			if !strings.Contains(line, "http") {
-				key_url = fmt.Sprintf("%s/%s", host, key_url)
+				key_url = fmt.Sprintf("%s/%s", host, key_url) //拼接url
 			}
-			res, err := grequests.Get(key_url, ro)
+			res, err := grequests.Get(key_url, ro) //解析请求获得结果
 			checkErr(err)
 			if res.StatusCode == 200 {
-				key = res.String()
+				key = res.String()  //获取m3u8的密钥
 			}
 		}
 	}
 	return
 }
-
+//返回tsList{name:索引(00001.ts),Url:host+xxx.ts(并且后的url)}
 func getTsList(host, body string) (tsList []TsInfo) {
 	lines := strings.Split(body, "\n")
 	index := 0
@@ -221,7 +243,7 @@ func getFromFile() string {
 
 //下载ts文件
 //modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
-func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+func downloadTsFile(ts TsInfo, download_dir string, key string, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
 			//fmt.Println("网络不稳定，正在进行断点持续下载")
@@ -229,17 +251,22 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		}
 	}()
 
+	// curr_path=下载路径/ts索引
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
+	//判断是否已经下载了该文件
 	if isExist, _ := PathExists(curr_path); isExist {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
+	// 请求下载，获得下载的ts数据
 	res, err := grequests.Get(ts.Url, ro)
 	if err != nil || !res.Ok {
 		if retries > 0 {
+			// 下载失败，尝试重新下载，减小重试次数
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		} else {
+			//retries为0(打印次数上限)时打印日志
 			logger.Printf("[warn] File :%s, Retry %s", ts.Url, retries-1)
 			return
 		}
@@ -382,7 +409,9 @@ func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
 	return crypted, nil
 }
 
+// 通过获得 key 解密
 func AesDecrypt(crypted, key []byte, ivs ...[]byte) ([]byte, error) {
+	// block为解密的得到的block stream, 传入下载的密钥创建新的block stream
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
