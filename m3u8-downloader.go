@@ -222,12 +222,17 @@ func getFromFile() string {
 //下载ts文件
 //modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
-	defer func() {
-		if r := recover(); r != nil {
-			//fmt.Println("网络不稳定，正在进行断点持续下载")
-			downloadTsFile(ts, download_dir, key, retries-1)
-		}
-	}()
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		fmt.Printf("网络不稳定，正在进行断点持续下载 %v\n", r)
+	// 		downloadTsFile(ts, download_dir, key, retries-1)
+	// 	}
+	// }()
+
+	if retries <= 0 {
+		logger.Fatalln("已达到最大重试次数，任务失败")
+		return
+	}
 
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
 	if isExist, _ := PathExists(curr_path); isExist {
@@ -236,23 +241,30 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	}
 	res, err := grequests.Get(ts.Url, ro)
 	if err != nil || !res.Ok {
-		if retries > 0 {
-			downloadTsFile(ts, download_dir, key, retries-1)
-			return
-		} else {
-			logger.Printf("[warn] File :%s, Retry %s", ts.Url, retries-1)
-			return
-		}
+		logger.Printf("下载失败，正在重试 %v\n", err)
+		downloadTsFile(ts, download_dir, key, retries-1)
+		return
 	}
 
 	var origData []byte
-	if key == "" {
-		//res.DownloadToFile(curr_path)
-		origData = res.Bytes()
-	} else {
+	origData = res.Bytes() // res.Error 可能会更新，在这里检查一下是否接收到了来自服务器的所有 bytes
+	if res.Error != nil {
+		logger.Printf("下载失败，正在重试 %v\n", res.Error)
+		downloadTsFile(ts, download_dir, key, retries-1)
+		return
+	}
+
+	if len(origData) == 0 {
+		logger.Printf("返回空数据，正在重试\n")
+		downloadTsFile(ts, download_dir, key, retries-1)
+		return
+	}
+
+	if key != "" {
 		//若加密，解密ts文件 aes 128 cbc pack5
-		origData, err = AesDecrypt(res.Bytes(), []byte(key))
+		origData, err = AesDecrypt(origData, []byte(key))
 		if err != nil {
+			logger.Printf("AES解密失败，正在重试 %v\n", err)
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		}
@@ -274,9 +286,9 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 
 //downloader m3u8下载器
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5  //单个ts下载重试次数
+	retry := 5 //单个ts下载重试次数
 	var wg sync.WaitGroup
-	limiter := make(chan struct{}, maxGoroutines)	//chan struct 内存占用0 bool占用1
+	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用0 bool占用1
 	tsLen := len(tsList)
 	downloadCount := 0
 
@@ -359,11 +371,14 @@ func PKCS7Padding(ciphertext []byte, blockSize int) []byte {
 
 func PKCS7UnPadding(origData []byte) []byte {
 	length := len(origData)
+	if length == 0 {
+		return origData
+	}
 	unpadding := int(origData[length-1])
 	return origData[:(length - unpadding)]
 }
 
-func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
+func AesEncrypt(origData, key []byte, ivs ...[]byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -372,7 +387,7 @@ func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
 	var iv []byte
 	if len(ivs) == 0 {
 		iv = key
-	}else{
+	} else {
 		iv = ivs[0]
 	}
 	origData = PKCS7Padding(origData, blockSize)
@@ -391,7 +406,7 @@ func AesDecrypt(crypted, key []byte, ivs ...[]byte) ([]byte, error) {
 	var iv []byte
 	if len(ivs) == 0 {
 		iv = key
-	}else{
+	} else {
 		iv = ivs[0]
 	}
 	blockMode := cipher.NewCBCDecrypter(block, iv[:blockSize])
