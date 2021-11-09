@@ -156,6 +156,7 @@ func getM3u8Body(Url string) string {
 }
 
 //获取m3u8加密的密钥
+//TODO: 把 key 的 string 换成 bytes，防止有 0x00 存在的时候把 string 截断
 func getM3u8Key(host, html string) (key string) {
 	lines := strings.Split(html, "\n")
 	key = ""
