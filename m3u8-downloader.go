@@ -1,6 +1,7 @@
-//@author:llychao<lychao_vip@163.com>
-//@date:2020-02-18
-//@功能:golang m3u8 video Downloader
+//@author: llychao<lychao_vip@163.com>
+//@contributor: Junyi<me@junyi.pw>
+//@date: 2020-02-18
+//@功能: golang m3u8 video Downloader
 package main
 
 import (
@@ -9,7 +10,6 @@ import (
 	"crypto/cipher"
 	"flag"
 	"fmt"
-	"github.com/levigross/grequests"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -20,13 +20,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/levigross/grequests"
 )
 
 const (
 	//HeadTimeout 请求头超时时间
-	HEAD_TIMEOUT = 10 * time.Second
-	//进度条长度
-	progressWidth = 40
+	HeadTimeout = 10 * time.Second
+	// ProgressWidth 进度条长度
+	ProgressWidth = 40
 )
 
 var (
@@ -41,7 +43,7 @@ var (
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
 		UserAgent:      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36",
-		RequestTimeout: HEAD_TIMEOUT,
+		RequestTimeout: HeadTimeout,
 		Headers: map[string]string{
 			"Connection":      "keep-alive",
 			"Accept":          "*/*",
@@ -94,12 +96,12 @@ func Run() {
 		return
 	}
 
-	var download_dir string
+	var downloadDir string
 	pwd, _ := os.Getwd()
 	//pwd = "/Users/chao/Desktop" //自定义地址
-	download_dir = pwd + "/movie/" + movieDir
-	if isExist, _ := PathExists(download_dir); !isExist {
-		os.MkdirAll(download_dir, os.ModePerm)
+	downloadDir = pwd + "/movie/" + movieDir
+	if isExist, _ := PathExists(downloadDir); !isExist {
+		os.MkdirAll(downloadDir, os.ModePerm)
 	} else {
 		//download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
 		//os.MkdirAll(download_dir, os.ModePerm)
@@ -109,27 +111,27 @@ func Run() {
 	m3u8Body := getM3u8Body(m3u8Url)
 	//m3u8Body := getFromFile()
 
-	ts_key := getM3u8Key(m3u8Host, m3u8Body)
-	if ts_key != "" {
-		fmt.Printf("待解密ts文件key: %s \n", ts_key)
+	tsKey := getM3u8Key(m3u8Host, m3u8Body)
+	if tsKey != "" {
+		fmt.Printf("待解密ts文件key: %s \n", tsKey)
 	}
 
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载ts文件数量:", len(ts_list))
 
 	//下载ts
-	downloader(ts_list, maxGoroutines, download_dir, ts_key)
+	downloader(ts_list, maxGoroutines, downloadDir, tsKey)
 
 	switch runtime.GOOS {
 	case "windows":
-		win_merge_file(download_dir)
+		winMergeFile(downloadDir)
 	default:
-		unix_merge_file(download_dir)
+		unixMergeFile(downloadDir)
 	}
-	os.Rename(download_dir+"/merge.mp4", download_dir+".mp4")
-	os.RemoveAll(download_dir)
+	os.Rename(downloadDir+"/merge.mp4", downloadDir+".mp4")
+	os.RemoveAll(downloadDir)
 
-	DrawProgressBar("Merging", float32(1), progressWidth, "merge.ts")
+	DrawProgressBar("Merging", float32(1), ProgressWidth, "merge.ts")
 	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
 }
 
@@ -159,13 +161,13 @@ func getM3u8Key(host, html string) (key string) {
 	key = ""
 	for _, line := range lines {
 		if strings.Contains(line, "#EXT-X-KEY") {
-			uri_pos := strings.Index(line, "URI")
-			quotation_mark_pos := strings.LastIndex(line, "\"")
-			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
+			uriPos := strings.Index(line, "URI")
+			quotationMarkPos := strings.LastIndex(line, "\"")
+			keyUrl := strings.Split(line[uriPos:quotationMarkPos], "\"")[1]
 			if !strings.Contains(line, "http") {
-				key_url = fmt.Sprintf("%s/%s", host, key_url)
+				keyUrl = fmt.Sprintf("%s/%s", host, keyUrl)
 			}
-			res, err := grequests.Get(key_url, ro)
+			res, err := grequests.Get(keyUrl, ro)
 			checkErr(err)
 			if res.StatusCode == 200 {
 				key = res.String()
@@ -221,7 +223,7 @@ func getFromFile() string {
 
 //下载ts文件
 //modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
-func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+func downloadTsFile(ts TsInfo, downloadDir, key string, retries int) {
 	// defer func() {
 	// 	if r := recover(); r != nil {
 	// 		fmt.Printf("网络不稳定，正在进行断点持续下载 %v\n", r)
@@ -234,15 +236,15 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		return
 	}
 
-	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
-	if isExist, _ := PathExists(curr_path); isExist {
+	currPath := fmt.Sprintf("%s/%s", downloadDir, ts.Name)
+	if isExist, _ := PathExists(currPath); isExist {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
 	res, err := grequests.Get(ts.Url, ro)
 	if err != nil || !res.Ok {
 		logger.Printf("下载失败，正在重试 %v\n", err)
-		downloadTsFile(ts, download_dir, key, retries-1)
+		downloadTsFile(ts, downloadDir, key, retries-1)
 		return
 	}
 
@@ -250,13 +252,13 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	origData = res.Bytes() // res.Error 可能会更新，在这里检查一下是否接收到了来自服务器的所有 bytes
 	if res.Error != nil {
 		logger.Printf("下载失败，正在重试 %v\n", res.Error)
-		downloadTsFile(ts, download_dir, key, retries-1)
+		downloadTsFile(ts, downloadDir, key, retries-1)
 		return
 	}
 
 	if len(origData) == 0 {
 		logger.Printf("返回空数据，正在重试\n")
-		downloadTsFile(ts, download_dir, key, retries-1)
+		downloadTsFile(ts, downloadDir, key, retries-1)
 		return
 	}
 
@@ -265,7 +267,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		origData, err = AesDecrypt(origData, []byte(key))
 		if err != nil {
 			logger.Printf("AES解密失败，正在重试 %v\n", err)
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, downloadDir, key, retries-1)
 			return
 		}
 	}
@@ -281,7 +283,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			break
 		}
 	}
-	ioutil.WriteFile(curr_path, origData, 0666)
+	ioutil.WriteFile(currPath, origData, 0666)
 }
 
 //downloader m3u8下载器
@@ -302,14 +304,14 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 			}()
 			downloadTsFile(ts, downloadDir, key, retryies)
 			downloadCount++
-			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), progressWidth, ts.Name)
+			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), ProgressWidth, ts.Name)
 			return
 		}(ts, downloadDir, key, retry)
 	}
 	wg.Wait()
 }
 
-//进度条
+// 进度条
 func DrawProgressBar(prefix string, proportion float32, width int, suffix ...string) {
 	pos := int(proportion * float32(width))
 	s := fmt.Sprintf("[%s] %s%*s %6.2f%% \t%s",
@@ -319,7 +321,7 @@ func DrawProgressBar(prefix string, proportion float32, width int, suffix ...str
 
 // ============================== shell相关 ==============================
 
-//执行shell
+// 执行shell
 func ExecUnixShell(s string) {
 	cmd := exec.Command("/bin/bash", "-c", s)
 	var out bytes.Buffer
@@ -344,7 +346,7 @@ func ExecWinShell(s string) error {
 }
 
 //windows合并文件
-func win_merge_file(path string) {
+func winMergeFile(path string) {
 	os.Chdir(path)
 	ExecWinShell("copy /b *.ts merge.tmp")
 	ExecWinShell("del /Q *.ts")
@@ -352,7 +354,7 @@ func win_merge_file(path string) {
 }
 
 //unix合并文件
-func unix_merge_file(path string) {
+func unixMergeFile(path string) {
 	os.Chdir(path)
 	//cmd := `ls  *.ts |sort -t "\." -k 1 -n |awk '{print $0}' |xargs -n 1 -I {} bash -c "cat {} >> new.tmp"`
 	cmd := `cat *.ts >> merge.tmp`
