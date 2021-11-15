@@ -1,4 +1,5 @@
 //@author:llychao<lychao_vip@163.com>
+//@contributor: Junyi<me@junyi.pw>
 //@date:2020-02-18
 //@功能:golang m3u8 video Downloader
 package main
@@ -17,26 +18,28 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	//HeadTimeout 请求头超时时间
+	// HEAD_TIMEOUT 请求头超时时间
 	HEAD_TIMEOUT = 10 * time.Second
-	//进度条长度
-	progressWidth = 40
+	// PROGRESS_WIDTH 进度条长度
+	PROGRESS_WIDTH = 40
 )
 
 var (
-	//命令行参数
+	// 命令行参数
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
 	nFlag   = flag.Int("n", 16, "下载线程数(max goroutines num)")
 	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + path.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
 	oFlag   = flag.String("o", "output", "自定义文件名(默认为output)")
 	cFlag   = flag.String("c", "", "自定义请求cookie")
 	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认为0)")
+	spFlag	= flag.String("sp", "", "文件保存路径(默认为当前路径)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -46,12 +49,12 @@ var (
 			"Connection":      "keep-alive",
 			"Accept":          "*/*",
 			"Accept-Encoding": "*",
-			"Accept-Language": "zh-Hans;q=1",
+			"Accept-Language": "zh-CN,zh;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5",
 		},
 	}
 )
 
-//TsInfo 用于保存ts文件的下载地址和文件名
+// TsInfo 用于保存 ts 文件的下载地址和文件名
 type TsInfo struct {
 	Name string
 	Url  string
@@ -66,12 +69,12 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8的视屏（ts+合并）\n[提醒]:如果下载失败，请使用-ht=apiv2\n[提醒]:如果下载失败，m3u8地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
+	msgTpl := "[功能]:多线程下载直播流 m3u8 的视屏（ts + 合并）\n[提醒]:如果下载失败，请使用 -ht=apiv2 \n[提醒]:如果下载失败，m3u8 地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
 
-	//解析命令行参数
+	// 解析命令行参数
 	flag.Parse()
 	m3u8Url := *urlFlag
 	maxGoroutines := *nFlag
@@ -79,12 +82,13 @@ func Run() {
 	movieDir := *oFlag
 	cookie := *cFlag
 	insecure := *sFlag
+	savePath := *spFlag
 
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
 
-	//http自定义cookie
+	// http 自定义 cookie
 	if cookie != "" {
 		ro.Headers["Cookie"] = cookie
 	}
@@ -96,13 +100,13 @@ func Run() {
 
 	var download_dir string
 	pwd, _ := os.Getwd()
+	if savePath != "" {
+		pwd = savePath
+	}
 	//pwd = "/Users/chao/Desktop" //自定义地址
 	download_dir = pwd + "/movie/" + movieDir
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
-	} else {
-		//download_dir = pwd + "/movie/" + movieDir + time.Now().Format("0601021504")
-		//os.MkdirAll(download_dir, os.ModePerm)
 	}
 
 	m3u8Host := getHost(m3u8Url, hostType)
@@ -111,13 +115,13 @@ func Run() {
 
 	ts_key := getM3u8Key(m3u8Host, m3u8Body)
 	if ts_key != "" {
-		fmt.Printf("待解密ts文件key: %s \n", ts_key)
+		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
 	}
 
 	ts_list := getTsList(m3u8Host, m3u8Body)
-	fmt.Println("待下载ts文件数量:", len(ts_list))
+	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 
-	//下载ts
+	// 下载ts
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
 
 	switch runtime.GOOS {
@@ -129,11 +133,11 @@ func Run() {
 	os.Rename(download_dir+"/merge.mp4", download_dir+".mp4")
 	os.RemoveAll(download_dir)
 
-	DrawProgressBar("Merging", float32(1), progressWidth, "merge.ts")
+	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
 	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
 }
 
-//获取m3u8地址的host
+// 获取m3u8地址的host
 func getHost(Url, ht string) (host string) {
 	u, err := url.Parse(Url)
 	checkErr(err)
@@ -146,14 +150,14 @@ func getHost(Url, ht string) (host string) {
 	return
 }
 
-//获取m3u8地址的内容体
+// 获取m3u8地址的内容体
 func getM3u8Body(Url string) string {
 	r, err := grequests.Get(Url, ro)
 	checkErr(err)
 	return r.String()
 }
 
-//获取m3u8加密的密钥
+// 获取m3u8加密的密钥
 func getM3u8Key(host, html string) (key string) {
 	lines := strings.Split(html, "\n")
 	key = ""
@@ -202,7 +206,7 @@ func getTsList(host, body string) (tsList []TsInfo) {
 	return
 }
 
-//判断文件是否存在
+// 判断文件是否存在
 func PathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -219,8 +223,8 @@ func getFromFile() string {
 	return string(data)
 }
 
-//下载ts文件
-//modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
+// 下载ts文件
+// @modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -240,24 +244,34 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		} else {
-			logger.Printf("[warn] File :%s, Retry %s", ts.Url, retries-1)
+			logger.Printf("[warn] File :%s, Retry %s \n", ts.Url, retries-1)
 			return
 		}
 	}
 
+	// 校验长度是否合法
 	var origData []byte
-	if key == "" {
-		//res.DownloadToFile(curr_path)
-		origData = res.Bytes()
-	} else {
-		//若加密，解密ts文件 aes 128 cbc pack5
-		origData, err = AesDecrypt(res.Bytes(), []byte(key))
+	origData = res.Bytes()
+	contentLen := 0
+	contentLenStr := res.Header.Get("Content-Length")
+	if contentLenStr != "" {
+		contentLen, _ = strconv.Atoi(contentLenStr)
+	}
+	if len(origData) == 0 || (contentLen > 0 && len(origData) < contentLen) || res.Error != nil {
+		//logger.Println("[warn] File: " + ts.Name + "res origData invalid or err：", res.Error)
+		downloadTsFile(ts, download_dir, key, retries-1)
+		return
+	}
+
+	// 解密出视频 ts 源文件
+	if key != "" {
+		//解密 ts 文件，算法：aes 128 cbc pack5
+		origData, err = AesDecrypt(origData, []byte(key))
 		if err != nil {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		}
 	}
-
 	// https://en.wikipedia.org/wiki/MPEG_transport_stream
 	// Some TS files do not start with SyncByte 0x47, they can not be played after merging,
 	// Need to remove the bytes before the SyncByte 0x47(71).
@@ -272,11 +286,11 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	ioutil.WriteFile(curr_path, origData, 0666)
 }
 
-//downloader m3u8下载器
+// downloader m3u8 下载器
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5  //单个ts下载重试次数
+	retry := 5  //单个 ts 下载重试次数
 	var wg sync.WaitGroup
-	limiter := make(chan struct{}, maxGoroutines)	//chan struct 内存占用0 bool占用1
+	limiter := make(chan struct{}, maxGoroutines)	//chan struct 内存占用 0 bool 占用 1
 	tsLen := len(tsList)
 	downloadCount := 0
 
@@ -290,14 +304,14 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 			}()
 			downloadTsFile(ts, downloadDir, key, retryies)
 			downloadCount++
-			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), progressWidth, ts.Name)
+			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), PROGRESS_WIDTH, ts.Name)
 			return
 		}(ts, downloadDir, key, retry)
 	}
 	wg.Wait()
 }
 
-//进度条
+// 进度条
 func DrawProgressBar(prefix string, proportion float32, width int, suffix ...string) {
 	pos := int(proportion * float32(width))
 	s := fmt.Sprintf("[%s] %s%*s %6.2f%% \t%s",
@@ -307,7 +321,7 @@ func DrawProgressBar(prefix string, proportion float32, width int, suffix ...str
 
 // ============================== shell相关 ==============================
 
-//执行shell
+// 执行 shell
 func ExecUnixShell(s string) {
 	cmd := exec.Command("/bin/bash", "-c", s)
 	var out bytes.Buffer
@@ -331,7 +345,7 @@ func ExecWinShell(s string) error {
 	return nil
 }
 
-//windows合并文件
+// windows 合并文件
 func win_merge_file(path string) {
 	os.Chdir(path)
 	ExecWinShell("copy /b *.ts merge.tmp")
@@ -339,7 +353,7 @@ func win_merge_file(path string) {
 	os.Rename("merge.tmp", "merge.mp4")
 }
 
-//unix合并文件
+// unix 合并文件
 func unix_merge_file(path string) {
 	os.Chdir(path)
 	//cmd := `ls  *.ts |sort -t "\." -k 1 -n |awk '{print $0}' |xargs -n 1 -I {} bash -c "cat {} >> new.tmp"`
@@ -372,7 +386,7 @@ func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
 	var iv []byte
 	if len(ivs) == 0 {
 		iv = key
-	}else{
+	} else {
 		iv = ivs[0]
 	}
 	origData = PKCS7Padding(origData, blockSize)
@@ -391,7 +405,7 @@ func AesDecrypt(crypted, key []byte, ivs ...[]byte) ([]byte, error) {
 	var iv []byte
 	if len(ivs) == 0 {
 		iv = key
-	}else{
+	} else {
 		iv = ivs[0]
 	}
 	blockMode := cipher.NewCBCDecrypter(block, iv[:blockSize])

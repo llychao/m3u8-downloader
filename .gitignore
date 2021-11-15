@@ -1,0 +1,7 @@
+.idea
+.DS_Store
+
+ts.txt
+movie/
+Releases/
+vendor/
