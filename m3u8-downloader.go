@@ -10,7 +10,6 @@ import (
 	"crypto/cipher"
 	"flag"
 	"fmt"
-	"github.com/levigross/grequests"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -22,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/levigross/grequests"
 )
 
 const (
@@ -39,7 +40,7 @@ var (
 	oFlag   = flag.String("o", "output", "自定义文件名(默认为output)")
 	cFlag   = flag.String("c", "", "自定义请求cookie")
 	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认为0)")
-	spFlag	= flag.String("sp", "", "文件保存路径(默认为当前路径)")
+	spFlag  = flag.String("sp", "", "文件保存路径(默认为当前路径)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -69,7 +70,7 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流 m3u8 的视屏（ts + 合并）\n[提醒]:如果下载失败，请使用 -ht=apiv2 \n[提醒]:如果下载失败，m3u8 地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
+	msgTpl := "[功能]:多线程下载直播流 m3u8 视屏（ts + 合并）\n[提醒]:如果下载失败，请使用 -ht=apiv2 \n[提醒]:如果下载失败，m3u8 地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -134,7 +135,7 @@ func Run() {
 	os.RemoveAll(download_dir)
 
 	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
-	fmt.Printf("\nDone! 耗时:%6.2fs\n", time.Now().Sub(now).Seconds())
+	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", download_dir+".mp4", time.Now().Sub(now).Seconds())
 }
 
 // 获取m3u8地址的host
@@ -244,7 +245,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		} else {
-			logger.Printf("[warn] File :%s, Retry %s \n", ts.Url, retries-1)
+			//logger.Printf("[warn] File :%s, Retry %d \n", ts.Url, retries-1)
 			return
 		}
 	}
@@ -288,9 +289,9 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 
 // downloader m3u8 下载器
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5  //单个 ts 下载重试次数
+	retry := 5 //单个 ts 下载重试次数
 	var wg sync.WaitGroup
-	limiter := make(chan struct{}, maxGoroutines)	//chan struct 内存占用 0 bool 占用 1
+	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
 	tsLen := len(tsList)
 	downloadCount := 0
 
@@ -377,7 +378,7 @@ func PKCS7UnPadding(origData []byte) []byte {
 	return origData[:(length - unpadding)]
 }
 
-func AesEncrypt(origData, key []byte,ivs ...[]byte) ([]byte, error) {
+func AesEncrypt(origData, key []byte, ivs ...[]byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
