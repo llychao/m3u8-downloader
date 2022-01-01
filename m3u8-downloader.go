@@ -85,6 +85,7 @@ func Run() {
 	insecure := *sFlag
 	savePath := *spFlag
 
+	ro.Headers["Referer"] = getHost(m3u8Url, "apiv2")
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
@@ -144,7 +145,7 @@ func getHost(Url, ht string) (host string) {
 	checkErr(err)
 	switch ht {
 	case "apiv1":
-		host = u.Scheme + "://" + u.Host + path.Dir(u.Path)
+		host = u.Scheme + "://" + u.Host + path.Dir(u.RawPath)
 	case "apiv2":
 		host = u.Scheme + "://" + u.Host
 	}
