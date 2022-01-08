@@ -89,43 +89,35 @@ func Run() {
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
-
 	// http 自定义 cookie
 	if cookie != "" {
 		ro.Headers["Cookie"] = cookie
 	}
-
 	if !strings.HasPrefix(m3u8Url, "http") || !strings.Contains(m3u8Url, "m3u8") || m3u8Url == "" {
 		flag.Usage()
 		return
 	}
-
 	var download_dir string
 	pwd, _ := os.Getwd()
 	if savePath != "" {
 		pwd = savePath
 	}
 	//pwd = "/Users/chao/Desktop" //自定义地址
-	download_dir = pwd + "/movie/" + movieDir
+	download_dir = path.Join(pwd, movieDir)
 	if isExist, _ := PathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
-
 	m3u8Host := getHost(m3u8Url, hostType)
 	m3u8Body := getM3u8Body(m3u8Url)
 	//m3u8Body := getFromFile()
-
 	ts_key := getM3u8Key(m3u8Host, m3u8Body)
 	if ts_key != "" {
 		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
 	}
-
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
-
 	// 下载ts
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
-
 	switch runtime.GOOS {
 	case "windows":
 		win_merge_file(download_dir)
@@ -134,7 +126,6 @@ func Run() {
 	}
 	os.Rename(download_dir+"/merge.mp4", download_dir+".mp4")
 	os.RemoveAll(download_dir)
-
 	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
 	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", download_dir+".mp4", time.Now().Sub(now).Seconds())
 }
@@ -185,7 +176,6 @@ func getTsList(host, body string) (tsList []TsInfo) {
 	lines := strings.Split(body, "\n")
 	index := 0
 	var ts TsInfo
-
 	for _, line := range lines {
 		if !strings.HasPrefix(line, "#") && line != "" {
 			//有可能出现的二级嵌套格式的m3u8,请自行转换！
@@ -234,7 +224,6 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			downloadTsFile(ts, download_dir, key, retries-1)
 		}
 	}()
-
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
 	if isExist, _ := PathExists(curr_path); isExist {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
@@ -250,7 +239,6 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			return
 		}
 	}
-
 	// 校验长度是否合法
 	var origData []byte
 	origData = res.Bytes()
@@ -264,7 +252,6 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		downloadTsFile(ts, download_dir, key, retries-1)
 		return
 	}
-
 	// 解密出视频 ts 源文件
 	if key != "" {
 		//解密 ts 文件，算法：aes 128 cbc pack5
@@ -295,7 +282,6 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
 	tsLen := len(tsList)
 	downloadCount := 0
-
 	for _, ts := range tsList {
 		wg.Add(1)
 		limiter <- struct{}{}
