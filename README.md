@@ -21,7 +21,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 
 ```
 - u M3U8 地址
-- o 自定义文件名, 默认 output
+- o 自定义文件名, 默认 movie
 - n 下载协程并发数，默认 16
 - ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
 - c 自定义请求cookie, 默认空
