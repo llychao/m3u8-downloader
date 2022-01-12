@@ -29,7 +29,9 @@ const (
 	// HEAD_TIMEOUT 请求头超时时间
 	HEAD_TIMEOUT = 10 * time.Second
 	// PROGRESS_WIDTH 进度条长度
-	PROGRESS_WIDTH = 40
+	PROGRESS_WIDTH = 20
+	// TS_NAME_TEMPLATE ts视频片段命名规则
+	TS_NAME_TEMPLATE = "%05d.ts"
 )
 
 var (
@@ -104,7 +106,7 @@ func Run() {
 	}
 	//pwd = "/Users/chao/Desktop" //自定义地址
 	download_dir = path.Join(pwd, movieDir)
-	if isExist, _ := PathExists(download_dir); !isExist {
+	if isExist, _ := pathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
 	m3u8Host := getHost(m3u8Url, hostType)
@@ -118,6 +120,10 @@ func Run() {
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 	// 下载ts
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
+	if ok := checkTsDownDir(download_dir); !ok {
+		fmt.Printf("\n[Failed] 请检查url地址有效性 \n")
+		return
+	}
 	switch runtime.GOOS {
 	case "windows":
 		win_merge_file(download_dir)
@@ -182,13 +188,13 @@ func getTsList(host, body string) (tsList []TsInfo) {
 			index++
 			if strings.HasPrefix(line, "http") {
 				ts = TsInfo{
-					Name: fmt.Sprintf("%05d.ts", index),
+					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
 					Url:  line,
 				}
 				tsList = append(tsList, ts)
 			} else {
 				ts = TsInfo{
-					Name: fmt.Sprintf("%05d.ts", index),
+					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
 					Url:  fmt.Sprintf("%s/%s", host, line),
 				}
 				tsList = append(tsList, ts)
@@ -196,18 +202,6 @@ func getTsList(host, body string) (tsList []TsInfo) {
 		}
 	}
 	return
-}
-
-// 判断文件是否存在
-func PathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
 }
 
 func getFromFile() string {
@@ -225,7 +219,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		}
 	}()
 	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
-	if isExist, _ := PathExists(curr_path); isExist {
+	if isExist, _ := pathExists(curr_path); isExist {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
@@ -299,6 +293,13 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 	wg.Wait()
 }
 
+func checkTsDownDir(dir string) bool {
+	if isExist, _ := pathExists(path.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
+		return true
+	}
+	return false
+}
+
 // 进度条
 func DrawProgressBar(prefix string, proportion float32, width int, suffix ...string) {
 	pos := int(proportion * float32(width))
@@ -308,9 +309,20 @@ func DrawProgressBar(prefix string, proportion float32, width int, suffix ...str
 }
 
 // ============================== shell相关 ==============================
+// 判断文件是否存在
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
 
 // 执行 shell
-func ExecUnixShell(s string) {
+func execUnixShell(s string) {
 	cmd := exec.Command("/bin/bash", "-c", s)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -321,7 +333,7 @@ func ExecUnixShell(s string) {
 	fmt.Printf("%s", out.String())
 }
 
-func ExecWinShell(s string) error {
+func execWinShell(s string) error {
 	cmd := exec.Command("cmd", "/C", s)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -336,8 +348,8 @@ func ExecWinShell(s string) error {
 // windows 合并文件
 func win_merge_file(path string) {
 	os.Chdir(path)
-	ExecWinShell("copy /b *.ts merge.tmp")
-	ExecWinShell("del /Q *.ts")
+	execWinShell("copy /b *.ts merge.tmp")
+	execWinShell("del /Q *.ts")
 	os.Rename("merge.tmp", "merge.mp4")
 }
 
@@ -346,8 +358,8 @@ func unix_merge_file(path string) {
 	os.Chdir(path)
 	//cmd := `ls  *.ts |sort -t "\." -k 1 -n |awk '{print $0}' |xargs -n 1 -I {} bash -c "cat {} >> new.tmp"`
 	cmd := `cat *.ts >> merge.tmp`
-	ExecUnixShell(cmd)
-	ExecUnixShell("rm -rf *.ts")
+	execUnixShell(cmd)
+	execUnixShell("rm -rf *.ts")
 	os.Rename("merge.tmp", "merge.mp4")
 }
 
