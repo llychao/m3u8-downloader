@@ -142,7 +142,7 @@ func getHost(Url, ht string) (host string) {
 	checkErr(err)
 	switch ht {
 	case "apiv1":
-		host = u.Scheme + "://" + u.Host + path.Dir(u.RawPath)
+		host = u.Scheme + "://" + u.Host + path.Dir(u.EscapedPath())
 	case "apiv2":
 		host = u.Scheme + "://" + u.Host
 	}
