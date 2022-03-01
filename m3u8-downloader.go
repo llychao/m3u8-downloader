@@ -95,7 +95,7 @@ func Run() {
 	if cookie != "" {
 		ro.Headers["Cookie"] = cookie
 	}
-	if !strings.HasPrefix(m3u8Url, "http") || !strings.Contains(m3u8Url, "m3u8") || m3u8Url == "" {
+	if !strings.HasPrefix(m3u8Url, "http") || m3u8Url == "" {
 		flag.Usage()
 		return
 	}
