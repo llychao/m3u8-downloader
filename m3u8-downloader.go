@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+        "path/filepath" 
 	"runtime"
 	"strconv"
 	"strings"
@@ -105,7 +106,8 @@ func Run() {
 		pwd = savePath
 	}
 	//pwd = "/Users/chao/Desktop" //自定义地址
-	download_dir = path.Join(pwd, movieDir)
+	//download_dir = path.Join(pwd, movieDir)
+	download_dir = filepath.Join(pwd, movieDir)
 	if isExist, _ := pathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
