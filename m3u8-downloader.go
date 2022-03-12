@@ -15,7 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -38,7 +38,7 @@ var (
 	// 命令行参数
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
 	nFlag   = flag.Int("n", 16, "下载线程数(max goroutines num)")
-	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + path.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
+	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + filepath.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
 	oFlag   = flag.String("o", "movie", "自定义文件名(默认为movie)")
 	cFlag   = flag.String("c", "", "自定义请求 cookie")
 	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认为0)")
@@ -105,7 +105,7 @@ func Run() {
 		pwd = savePath
 	}
 	//pwd = "/Users/chao/Desktop" //自定义地址
-	download_dir = path.Join(pwd, movieDir)
+	download_dir = filepath.Join(pwd, movieDir)
 	if isExist, _ := pathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
@@ -130,7 +130,7 @@ func Run() {
 	default:
 		unix_merge_file(download_dir)
 	}
-	os.Rename(download_dir+"/merge.mp4", download_dir+".mp4")
+	os.Rename(filepath.Join(download_dir, "merge.mp4"), download_dir+".mp4")
 	os.RemoveAll(download_dir)
 	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
 	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", download_dir+".mp4", time.Now().Sub(now).Seconds())
@@ -142,7 +142,7 @@ func getHost(Url, ht string) (host string) {
 	checkErr(err)
 	switch ht {
 	case "apiv1":
-		host = u.Scheme + "://" + u.Host + path.Dir(u.EscapedPath())
+		host = u.Scheme + "://" + u.Host + filepath.Dir(u.EscapedPath())
 	case "apiv2":
 		host = u.Scheme + "://" + u.Host
 	}
@@ -229,7 +229,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
 		} else {
-			//logger.Printf("[warn] File :%s, Retry %d \n", ts.Url, retries-1)
+			//logger.Printf("[warn] File :%s", ts.Url)
 			return
 		}
 	}
@@ -294,7 +294,7 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 }
 
 func checkTsDownDir(dir string) bool {
-	if isExist, _ := pathExists(path.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
+	if isExist, _ := pathExists(filepath.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
 		return true
 	}
 	return false
