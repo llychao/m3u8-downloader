@@ -111,6 +111,17 @@ func Run() {
 	}
 	m3u8Host := getHost(m3u8Url, hostType)
 	m3u8Body := getM3u8Body(m3u8Url)
+
+	// 判断该文件是二级目录还是ts列表
+	if file, path := parseM3U8File(m3u8Body); file == TypeMenu {
+		// 请求这个地址，并将其作为原代码逻辑中的顶级路径，即 u 指定的参数
+		parse, err := url.Parse(m3u8Url)
+		if err != nil {
+			panic(err)
+		}
+		m3u8Body = getM3u8Body(parse.Scheme + "://" + parse.Host + path) // 注意：这里的path直接假设为相同域名下了
+	}
+
 	//m3u8Body := getFromFile()
 	ts_key := getM3u8Key(m3u8Host, m3u8Body)
 	if ts_key != "" {
@@ -202,6 +213,28 @@ func getTsList(host, body string) (tsList []TsInfo) {
 		}
 	}
 	return
+}
+
+// 文件内容的类别
+const TypeMenu = 0     // 二级目录
+const TypePlayList = 1 // 播放列表，即 ts 列表
+
+// 解析 M3U8 文件
+func parseM3U8File(content string) (int, string) {
+	lines := strings.Split(content, "\n")
+	for i, l := 0, len(lines); i < l; i++ {
+		// 二级 M3U8。多码率适配流。
+		if strings.HasPrefix(lines[i], "#EXT-X-STREAM-INF") {
+			// 那么下一行应该是一个播放地址
+			// 对于我的需求，我只要第一个地址的文件就行，因此我这里直接返回了
+			if i+1 < l {
+				return TypeMenu, lines[i+1]
+			}
+		}
+		// 我只考虑这一种形式，因此其他类别不再继续写了
+		// key、ts的获取都可以在这里完成
+	}
+	return TypePlayList, "" // 默认代码原行为
 }
 
 func getFromFile() string {
