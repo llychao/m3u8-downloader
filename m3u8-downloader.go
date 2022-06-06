@@ -323,7 +323,7 @@ func pathExists(path string) (bool, error) {
 
 // 执行 shell
 func execUnixShell(s string) {
-	cmd := exec.Command("/bin/bash", "-c", s)
+	cmd := exec.Command("bash", "-c", s)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -347,20 +347,24 @@ func execWinShell(s string) error {
 
 // windows 合并文件
 func win_merge_file(path string) {
+	pwd, _ := os.Getwd()
 	os.Chdir(path)
 	execWinShell("copy /b *.ts merge.tmp")
 	execWinShell("del /Q *.ts")
 	os.Rename("merge.tmp", "merge.mp4")
+	os.Chdir(pwd)
 }
 
 // unix 合并文件
 func unix_merge_file(path string) {
+	pwd, _ := os.Getwd()
 	os.Chdir(path)
 	//cmd := `ls  *.ts |sort -t "\." -k 1 -n |awk '{print $0}' |xargs -n 1 -I {} bash -c "cat {} >> new.tmp"`
 	cmd := `cat *.ts >> merge.tmp`
 	execUnixShell(cmd)
 	execUnixShell("rm -rf *.ts")
 	os.Rename("merge.tmp", "merge.mp4")
+	os.Chdir(pwd)
 }
 
 // ============================== 加解密相关 ==============================
