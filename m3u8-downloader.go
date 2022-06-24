@@ -77,7 +77,7 @@ func Run() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
 
-	// 解析命令行参数
+	// 1、解析命令行参数
 	flag.Parse()
 	m3u8Url := *urlFlag
 	maxGoroutines := *nFlag
@@ -104,11 +104,12 @@ func Run() {
 	if savePath != "" {
 		pwd = savePath
 	}
-	//pwd = "/Users/chao/Desktop" //自定义地址
 	download_dir = filepath.Join(pwd, movieDir)
 	if isExist, _ := pathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
+
+	// 2、解析m3u8
 	m3u8Host := getHost(m3u8Url, hostType)
 	m3u8Body := getM3u8Body(m3u8Url)
 	//m3u8Body := getFromFile()
@@ -118,20 +119,26 @@ func Run() {
 	}
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
-	// 下载ts
+
+	// 3、下载ts切割文件到download_dir
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
 	if ok := checkTsDownDir(download_dir); !ok {
 		fmt.Printf("\n[Failed] 请检查url地址有效性 \n")
 		return
 	}
+
+	// 4、合并ts切割文件成mp4文件
 	switch runtime.GOOS {
 	case "windows":
 		win_merge_file(download_dir)
 	default:
 		unix_merge_file(download_dir)
 	}
+
+	// 5、输出下载视频信息
 	os.Rename(filepath.Join(download_dir, "merge.mp4"), download_dir+".mp4")
 	os.RemoveAll(download_dir)
+	os.Chdir(pwd)
 	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
 	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", download_dir+".mp4", time.Now().Sub(now).Seconds())
 }
@@ -218,8 +225,8 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			downloadTsFile(ts, download_dir, key, retries-1)
 		}
 	}()
-	curr_path := fmt.Sprintf("%s/%s", download_dir, ts.Name)
-	if isExist, _ := pathExists(curr_path); isExist {
+	curr_path_file := fmt.Sprintf("%s/%s", download_dir, ts.Name)
+	if isExist, _ := pathExists(curr_path_file); isExist {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
@@ -266,7 +273,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			break
 		}
 	}
-	ioutil.WriteFile(curr_path, origData, 0666)
+	ioutil.WriteFile(curr_path_file, origData, 0666)
 }
 
 // downloader m3u8 下载器

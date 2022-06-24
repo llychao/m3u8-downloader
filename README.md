@@ -24,9 +24,9 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 - o 自定义文件名, 默认 movie
 - n 下载协程并发数，默认 16
 - ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
-- c 自定义请求cookie, 默认空
+- c 自定义请求cookie, 默认空 (例如：key1=v1; key2=v2)
 - s 是否允许不安全的请求, 默认 0
-- sp 文件保存路径, 默认为当前路径
+- sp 文件保存路径, 默认为当前路径(例如：unix:/Users/liyuchao ; windows:C:\Documents)
 ```
 
 默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
@@ -55,14 +55,14 @@ Linux 和 MacOS 和 Windows PowerShell
 
 ```
 简洁使用：
-./m3u8-downloader-v1.0.0-linux-amd64 -u=http://example.com/index.m3u8
-./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 
-.\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8
+./m3u8-linux-amd64 -u=http://example.com/index.m3u8
+./m3u8-darwin-amd64 -u=http://example.com/index.m3u8 
+.\m3u8-windows-amd64.exe -u=http://example.com/index.m3u8
 
 完整使用：
-./m3u8-downloader-v1.0.0-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
-./m3u8-downloader-v1.0.0-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
-.\m3u8-downloader-v1.0.0-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+./m3u8-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+./m3u8-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+.\m3u8-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
 ```
 
 ## 问题说明
@@ -70,9 +70,9 @@ Linux 和 MacOS 和 Windows PowerShell
 1.在Linux或者mac平台，如果显示无运行权限，请用chmod 命令进行添加权限
 ```bash
  # Linux amd64平台
- chmod 0755 m3u8-downloader-v1.0.0-linux-amd64
+ chmod 0755 m3u8-linux-amd64
  # Mac darwin amd64平台
- chmod 0755 m3u8-downloader-v1.0.0-darwin-amd64
+ chmod 0755 m3u8-darwin-amd64
  ```
 2.下载失败的情况,请设置 -ht="apiv1" 或者 -ht="apiv2" （默认为apiv1）
 ```golang
