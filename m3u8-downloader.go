@@ -27,7 +27,7 @@ import (
 
 const (
 	// HEAD_TIMEOUT 请求头超时时间
-	HEAD_TIMEOUT = 10 * time.Second
+	HEAD_TIMEOUT = 20 * time.Second
 	// PROGRESS_WIDTH 进度条长度
 	PROGRESS_WIDTH = 20
 	// TS_NAME_TEMPLATE ts视频片段命名规则
