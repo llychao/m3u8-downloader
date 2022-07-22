@@ -150,6 +150,8 @@ func getHost(Url, ht string) (host string) {
 	switch ht {
 	case "apiv1":
 		host = u.Scheme + "://" + u.Host + filepath.Dir(u.EscapedPath())
+		a := u.EscapedPath()
+		fmt.Println(a)
 	case "apiv2":
 		host = u.Scheme + "://" + u.Host
 	}
@@ -221,13 +223,13 @@ func getFromFile() string {
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
-			//fmt.Println("网络不稳定，正在进行断点持续下载")
+			fmt.Println("网络不稳定，正在进行断点持续下载")
 			downloadTsFile(ts, download_dir, key, retries-1)
 		}
 	}()
 	curr_path_file := fmt.Sprintf("%s/%s", download_dir, ts.Name)
 	if isExist, _ := pathExists(curr_path_file); isExist {
-		//logger.Println("[warn] File: " + ts.Name + "already exist")
+		logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
 	res, err := grequests.Get(ts.Url, ro)
@@ -278,7 +280,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 
 // downloader m3u8 下载器
 func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5 //单个 ts 下载重试次数
+	retry := 10 //单个 ts 下载重试次数
 	var wg sync.WaitGroup
 	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
 	tsLen := len(tsList)
