@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
@@ -37,12 +38,12 @@ const (
 var (
 	// 命令行参数
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
-	nFlag   = flag.Int("n", 16, "下载线程数(max goroutines num)")
+	nFlag   = flag.Int("n", 16, "下载线程数(默认16)")
 	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + filepath.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
-	oFlag   = flag.String("o", "movie", "自定义文件名(默认为movie)")
-	cFlag   = flag.String("c", "", "自定义请求 cookie")
-	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认为0)")
-	spFlag  = flag.String("sp", "", "文件保存路径(默认为当前路径)")
+	oFlag   = flag.String("o", "movie", "自定义文件名(默认为movie)不带后缀")
+	cFlag   = flag.String("c", "", "自定义请求cookie")
+	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认0)")
+	spFlag  = flag.String("sp", "", "文件保存的绝对路径(默认为当前路径,建议默认值)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -72,7 +73,7 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流 m3u8 视屏（ts + 合并）\n[提醒]:如果下载失败，请使用 -ht=apiv2 \n[提醒]:如果下载失败，m3u8 地址可能存在嵌套\n[提醒]:如果进度条中途下载失败，可重复执行"
+	msgTpl := "[功能]:多线程下载直播流m3u8视屏\n[提醒]:下载失败，请使用 -ht=apiv2 \n[提醒]:下载失败，m3u8 地址可能存在嵌套\n[提醒]:进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -82,7 +83,7 @@ func Run() {
 	m3u8Url := *urlFlag
 	maxGoroutines := *nFlag
 	hostType := *htFlag
-	movieDir := *oFlag
+	movieName := *oFlag
 	cookie := *cFlag
 	insecure := *sFlag
 	savePath := *spFlag
@@ -104,7 +105,8 @@ func Run() {
 	if savePath != "" {
 		pwd = savePath
 	}
-	download_dir = filepath.Join(pwd, movieDir)
+	// 初始化下载ts的目录，后面所有的ts文件会保存在这里
+	download_dir = filepath.Join(pwd, movieName)
 	if isExist, _ := pathExists(download_dir); !isExist {
 		os.MkdirAll(download_dir, os.ModePerm)
 	}
@@ -120,7 +122,7 @@ func Run() {
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 
-	// 3、下载ts切割文件到download_dir
+	// 3、下载ts文件到download_dir
 	downloader(ts_list, maxGoroutines, download_dir, ts_key)
 	if ok := checkTsDownDir(download_dir); !ok {
 		fmt.Printf("\n[Failed] 请检查url地址有效性 \n")
@@ -128,19 +130,11 @@ func Run() {
 	}
 
 	// 4、合并ts切割文件成mp4文件
-	switch runtime.GOOS {
-	case "windows":
-		win_merge_file(download_dir)
-	default:
-		unix_merge_file(download_dir)
-	}
+	mv := mergeTs(download_dir)
 
-	// 5、输出下载视频信息
-	os.Rename(filepath.Join(download_dir, "merge.mp4"), download_dir+".mp4")
-	os.RemoveAll(download_dir)
-	os.Chdir(pwd)
-	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, "merge.ts")
-	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", download_dir+".mp4", time.Now().Sub(now).Seconds())
+	//5、输出下载视频信息
+	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, mv)
+	fmt.Printf("\n[Success] 下载保存路径：%s | 共耗时: %6.2fs\n", mv, time.Now().Sub(now).Seconds())
 }
 
 // 获取m3u8地址的host
@@ -305,6 +299,29 @@ func checkTsDownDir(dir string) bool {
 		return true
 	}
 	return false
+}
+
+// 合并ts文件
+func mergeTs(downloadDir string) string {
+	mvName := downloadDir + ".mp4"
+	outMv, _ := os.Create(mvName)
+	defer outMv.Close()
+	writer := bufio.NewWriter(outMv)
+	err := filepath.Walk(downloadDir, func(path string, f os.FileInfo, err error) error {
+		if f == nil {
+			return err
+		}
+		if f.IsDir() || filepath.Ext(path) != ".ts" {
+			return nil
+		}
+		bytes, _ := ioutil.ReadFile(path)
+		_, err = writer.Write(bytes)
+		return err
+	})
+	checkErr(err)
+	_ = writer.Flush()
+	os.RemoveAll(downloadDir)
+	return mvName
 }
 
 // 进度条
