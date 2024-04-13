@@ -90,7 +90,7 @@ func Run() {
 	insecure := *sFlag
 	savePath := *spFlag
 
-	ro.Headers["Referer"] = getHost(m3u8Url, "apiv2")
+	ro.Headers["Referer"] = getHost(m3u8Url, "v2")
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
