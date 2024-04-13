@@ -1,7 +1,7 @@
-//@author:llychao<lychao_vip@163.com>
-//@contributor: Junyi<me@junyi.pw>
-//@date:2020-02-18
-//@功能:golang m3u8 video Downloader
+// @author:llychao<lychao_vip@163.com>
+// @contributor: Junyi<me@junyi.pw>
+// @date:2020-02-18
+// @功能:golang m3u8 video Downloader
 package main
 
 import (
@@ -28,7 +28,7 @@ import (
 
 const (
 	// HEAD_TIMEOUT 请求头超时时间
-	HEAD_TIMEOUT = 10 * time.Second
+	HEAD_TIMEOUT = 5 * time.Second
 	// PROGRESS_WIDTH 进度条长度
 	PROGRESS_WIDTH = 20
 	// TS_NAME_TEMPLATE ts视频片段命名规则
@@ -38,12 +38,13 @@ const (
 var (
 	// 命令行参数
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
-	nFlag   = flag.Int("n", 16, "下载线程数(默认16)")
-	htFlag  = flag.String("ht", "apiv1", "设置getHost的方式(apiv1: `http(s):// + url.Host + filepath.Dir(url.Path)`; apiv2: `http(s)://+ u.Host`")
-	oFlag   = flag.String("o", "movie", "自定义文件名(默认为movie)不带后缀")
-	cFlag   = flag.String("c", "", "自定义请求cookie")
-	sFlag   = flag.Int("s", 0, "是否允许不安全的请求(默认0)")
-	spFlag  = flag.String("sp", "", "文件保存的绝对路径(默认为当前路径,建议默认值)")
+	nFlag   = flag.Int("n", 24, "num:下载线程数(默认24)")
+	htFlag  = flag.String("ht", "v1", "hostType:设置getHost的方式(v1: `http(s):// + url.Host + filepath.Dir(url.Path)`; v2: `http(s)://+ u.Host`")
+	oFlag   = flag.String("o", "movie", "movieName:自定义文件名(默认为movie)不带后缀")
+	cFlag   = flag.String("c", "", "cookie:自定义请求cookie")
+	rFlag   = flag.Bool("r", true, "autoClear:是否自动清除ts文件")
+	sFlag   = flag.Int("s", 0, "InsecureSkipVerify:是否允许不安全的请求(默认0)")
+	spFlag  = flag.String("sp", "", "savePath:文件保存的绝对路径(默认为当前路径,建议默认值)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -73,7 +74,7 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8视屏\n[提醒]:下载失败，请使用 -ht=apiv2 \n[提醒]:下载失败，m3u8 地址可能存在嵌套\n[提醒]:进度条中途下载失败，可重复执行"
+	msgTpl := "[功能]:多线程下载直播流m3u8视屏\n[提醒]:下载失败，请使用 -ht=v2 \n[提醒]:下载失败，m3u8 地址可能存在嵌套\n[提醒]:进度条中途下载失败，可重复执行"
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -84,6 +85,7 @@ func Run() {
 	maxGoroutines := *nFlag
 	hostType := *htFlag
 	movieName := *oFlag
+	autoClearFlag := *rFlag
 	cookie := *cFlag
 	insecure := *sFlag
 	savePath := *spFlag
@@ -131,6 +133,10 @@ func Run() {
 
 	// 4、合并ts切割文件成mp4文件
 	mv := mergeTs(download_dir)
+	if autoClearFlag {
+		//自动清除ts文件目录
+		os.RemoveAll(download_dir)
+	}
 
 	//5、输出下载视频信息
 	DrawProgressBar("Merging", float32(1), PROGRESS_WIDTH, mv)
@@ -142,9 +148,9 @@ func getHost(Url, ht string) (host string) {
 	u, err := url.Parse(Url)
 	checkErr(err)
 	switch ht {
-	case "apiv1":
+	case "v1":
 		host = u.Scheme + "://" + u.Host + filepath.Dir(u.EscapedPath())
-	case "apiv2":
+	case "v2":
 		host = u.Scheme + "://" + u.Host
 	}
 	return
@@ -320,7 +326,6 @@ func mergeTs(downloadDir string) string {
 	})
 	checkErr(err)
 	_ = writer.Flush()
-	os.RemoveAll(downloadDir)
 	return mvName
 }
 
