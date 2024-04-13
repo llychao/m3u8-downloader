@@ -47,7 +47,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 ```bash
 自己编译：go build -o m3u8-downloader
 简洁使用：./m3u8-downloader  -u=http://example.com/index.m3u8
-完整使用：./m3u8-downloader  -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+完整使用：./m3u8-downloader  -u=http://example.com/index.m3u8 -o=example -n=16 -ht=v1 -c="key1=v1; key2=v2"
 ```
 
 ### 二进制方式:
@@ -61,9 +61,9 @@ Linux 和 MacOS 和 Windows PowerShell
 .\m3u8-windows-amd64.exe -u=http://example.com/index.m3u8
 
 完整使用：
-./m3u8-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
-./m3u8-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
-.\m3u8-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=apiv1 -c="key1=v1; key2=v2"
+./m3u8-linux-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=v1 -c="key1=v1; key2=v2"
+./m3u8-darwin-amd64 -u=http://example.com/index.m3u8 -o=example -n=16 -ht=v1 -c="key1=v1; key2=v2"
+.\m3u8-windows-amd64.exe -u=http://example.com/index.m3u8 -o=example -n=16 -ht=v1 -c="key1=v1; key2=v2"
 ```
 
 ## 问题说明
@@ -82,9 +82,9 @@ func get_host(Url string, ht string) string {
     var host string
     checkErr(err)
     switch ht {
-    case "apiv1":
+    case "v1":
         host = u.Scheme + "://" + u.Host + path.Dir(u.Path)
-    case "apiv2":
+    case "v2":
         host = u.Scheme + "://" + u.Host
     }
     return host
