@@ -20,13 +20,14 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 ## 参数说明：
 
 ```
-- u M3U8 地址
-- o 自定义文件名, 默认 movie
-- n 下载协程并发数，默认 16
-- ht 设置getHost的方式（共两种 apiv1 和 apiv2）, 默认 apiv1
-- c 自定义请求cookie, 默认空 (例如：key1=v1; key2=v2)
-- s 是否允许不安全的请求, 默认 0
-- sp 文件保存路径, 默认为当前路径(例如：unix:/Users/liyuchao ; windows:C:\Documents)
+- u  m3u8下载地址(http(s)://url/xx/xx/index.m3u8)
+- o  movieName:自定义文件名(默认为movie)不带后缀 (default "movie")
+- n  num:下载线程数(默认24)
+- ht hostType:设置getHost的方式(v1: http(s):// + url.Host + filepath.Dir(url.Path); v2: `http(s)://+ u.Host` (default "v1")
+- c  cookie:自定义请求cookie (例如：key1=v1; key2=v2)
+- r  autoClear:是否自动清除ts文件 (default true)
+- s  InsecureSkipVerify:是否允许不安全的请求(默认0)
+- sp savePath:文件保存的绝对路径(默认为当前路径,建议默认值)(例如：unix:/Users/xxxx ; windows:C:\Documents)
 ```
 
 默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
