@@ -75,7 +75,7 @@ Linux 和 MacOS 和 Windows PowerShell
  # Mac darwin amd64平台
  chmod 0755 m3u8-darwin-amd64
  ```
-2.下载失败的情况,请设置 -ht="apiv1" 或者 -ht="apiv2" （默认为apiv1）
+2.下载失败的情况,请设置 -ht="v1" 或者 -ht="v2" （默认为 v1）
 ```golang
 func get_host(Url string, ht string) string {
     u, err := url.Parse(Url)
