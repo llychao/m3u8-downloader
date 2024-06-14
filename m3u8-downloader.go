@@ -39,7 +39,6 @@ var (
 	// 命令行参数
 	urlFlag = flag.String("u", "", "m3u8下载地址(http(s)://url/xx/xx/index.m3u8)")
 	nFlag   = flag.Int("n", 24, "num:下载线程数(默认24)")
-	htFlag  = flag.String("ht", "v1", "hostType:设置getHost的方式(v1: `http(s):// + url.Host + filepath.Dir(url.Path)`; v2: `http(s)://+ u.Host`")
 	oFlag   = flag.String("o", "movie", "movieName:自定义文件名(默认为movie)不带后缀")
 	cFlag   = flag.String("c", "", "cookie:自定义请求cookie")
 	rFlag   = flag.Bool("r", true, "autoClear:是否自动清除ts文件")
@@ -63,6 +62,7 @@ var (
 type TsInfo struct {
 	Name string
 	Url  string
+	Key  string
 }
 
 func init() {
@@ -83,7 +83,6 @@ func Run() {
 	flag.Parse()
 	m3u8Url := *urlFlag
 	maxGoroutines := *nFlag
-	hostType := *htFlag
 	movieName := *oFlag
 	autoClearFlag := *rFlag
 	cookie := *cFlag
@@ -114,18 +113,15 @@ func Run() {
 	}
 
 	// 2、解析m3u8
-	m3u8Host := getHost(m3u8Url, hostType)
+
 	m3u8Body := getM3u8Body(m3u8Url)
 	//m3u8Body := getFromFile()
-	ts_key := getM3u8Key(m3u8Host, m3u8Body)
-	if ts_key != "" {
-		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
-	}
-	ts_list := getTsList(m3u8Host, m3u8Body)
+
+	ts_list := getTsList(m3u8Url, m3u8Body)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 
 	// 3、下载ts文件到download_dir
-	downloader(ts_list, maxGoroutines, download_dir, ts_key)
+	downloader(ts_list, maxGoroutines, download_dir)
 	if ok := checkTsDownDir(download_dir); !ok {
 		fmt.Printf("\n[Failed] 请检查url地址有效性 \n")
 		return
@@ -164,17 +160,18 @@ func getM3u8Body(Url string) string {
 }
 
 // 获取m3u8加密的密钥
-func getM3u8Key(host, html string) (key string) {
+func getM3u8Key(m3u8Url, html string) (key string) {
 	lines := strings.Split(html, "\n")
 	key = ""
+
+	m3u8Host := getHost(m3u8Url, "v2")
+	m3u8BaseUrl := getHost(m3u8Url, "v1")
 	for _, line := range lines {
 		if strings.Contains(line, "#EXT-X-KEY") {
 			uri_pos := strings.Index(line, "URI")
 			quotation_mark_pos := strings.LastIndex(line, "\"")
 			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
-			if !strings.Contains(line, "http") {
-				key_url = fmt.Sprintf("%s/%s", host, key_url)
-			}
+			key_url = getFullUrl(key_url, m3u8Host, m3u8BaseUrl)
 			res, err := grequests.Get(key_url, ro)
 			checkErr(err)
 			if res.StatusCode == 200 {
@@ -185,30 +182,62 @@ func getM3u8Key(host, html string) (key string) {
 	return
 }
 
-func getTsList(host, body string) (tsList []TsInfo) {
+func getTsList(m3u8Url, body string) (tsList []TsInfo) {
 	lines := strings.Split(body, "\n")
 	index := 0
 	var ts TsInfo
+	m3u8Host := getHost(m3u8Url, "v2")
+	m3u8BaseUrl := getHost(m3u8Url, "v1")
+	ts_key := getM3u8Key(m3u8Url, body)
+	if ts_key != "" {
+		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
+	}
+	var secM3u8Url string
+	var secBody string
+	var secTsList []TsInfo
 	for _, line := range lines {
 		if !strings.HasPrefix(line, "#") && line != "" {
-			//有可能出现的二级嵌套格式的m3u8,请自行转换！
-			index++
-			if strings.HasPrefix(line, "http") {
-				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
-					Url:  line,
+			if strings.Contains(line, ".m3u8") {
+				secM3u8Url = getFullUrl(line, m3u8Host, m3u8BaseUrl)
+				secBody = getM3u8Body(getFullUrl(line, m3u8Host, m3u8BaseUrl))
+				secTsList = getTsList(secM3u8Url, secBody)
+				for _, ts = range secTsList {
+					index++
+					ts.Name = fmt.Sprintf(TS_NAME_TEMPLATE, index)
+					tsList = append(tsList, ts)
 				}
-				tsList = append(tsList, ts)
 			} else {
-				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
-					Url:  fmt.Sprintf("%s/%s", host, line),
+
+				index++
+				if strings.HasPrefix(line, "http") {
+					ts = TsInfo{
+						Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
+						Url:  line,
+						Key:  ts_key,
+					}
+					tsList = append(tsList, ts)
+				} else {
+					ts = TsInfo{
+						Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
+						Url:  getFullUrl(line, m3u8Host, m3u8BaseUrl),
+						Key:  ts_key,
+					}
+					tsList = append(tsList, ts)
 				}
-				tsList = append(tsList, ts)
 			}
 		}
 	}
 	return
+}
+func getFullUrl(url string, host string, baseUrl string) (render string) {
+	render = url
+	if strings.HasPrefix(url, "/") {
+		render = fmt.Sprintf("%s%s", host, url)
+	} else if !strings.HasPrefix(url, "http") {
+		render = fmt.Sprintf("%s/%s", baseUrl, url)
+	}
+	return
+
 }
 
 func getFromFile() string {
@@ -218,11 +247,11 @@ func getFromFile() string {
 
 // 下载ts文件
 // @modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
-func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+func downloadTsFile(ts TsInfo, download_dir string, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
 			//fmt.Println("网络不稳定，正在进行断点持续下载")
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, retries-1)
 		}
 	}()
 	curr_path_file := fmt.Sprintf("%s/%s", download_dir, ts.Name)
@@ -233,7 +262,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	res, err := grequests.Get(ts.Url, ro)
 	if err != nil || !res.Ok {
 		if retries > 0 {
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, retries-1)
 			return
 		} else {
 			//logger.Printf("[warn] File :%s", ts.Url)
@@ -250,15 +279,16 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	}
 	if len(origData) == 0 || (contentLen > 0 && len(origData) < contentLen) || res.Error != nil {
 		//logger.Println("[warn] File: " + ts.Name + "res origData invalid or err：", res.Error)
-		downloadTsFile(ts, download_dir, key, retries-1)
+		downloadTsFile(ts, download_dir, retries-1)
 		return
 	}
 	// 解密出视频 ts 源文件
+	key := ts.Key
 	if key != "" {
 		//解密 ts 文件，算法：aes 128 cbc pack5
 		origData, err = AesDecrypt(origData, []byte(key))
 		if err != nil {
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, retries-1)
 			return
 		}
 	}
@@ -277,7 +307,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 }
 
 // downloader m3u8 下载器
-func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
+func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string) {
 	retry := 5 //单个 ts 下载重试次数
 	var wg sync.WaitGroup
 	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
@@ -286,16 +316,16 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 	for _, ts := range tsList {
 		wg.Add(1)
 		limiter <- struct{}{}
-		go func(ts TsInfo, downloadDir, key string, retryies int) {
+		go func(ts TsInfo, downloadDir string, retryies int) {
 			defer func() {
 				wg.Done()
 				<-limiter
 			}()
-			downloadTsFile(ts, downloadDir, key, retryies)
+			downloadTsFile(ts, downloadDir, retryies)
 			downloadCount++
 			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), PROGRESS_WIDTH, ts.Name)
 			return
-		}(ts, downloadDir, key, retry)
+		}(ts, downloadDir, retry)
 	}
 	wg.Wait()
 }
@@ -452,4 +482,34 @@ func checkErr(e error) {
 	if e != nil {
 		logger.Panic(e)
 	}
+}
+
+func Substr(str string, start, length int) string {
+	rs := []rune(str)
+	rl := len(rs)
+	end := 0
+
+	if start < 0 {
+		start = rl - 1 + start
+	}
+	end = start + length
+
+	if start > end {
+		start, end = end, start
+	}
+
+	if start < 0 {
+		start = 0
+	}
+	if start > rl {
+		start = rl
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end > rl {
+		end = rl
+	}
+
+	return string(rs[start:end])
 }
