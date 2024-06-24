@@ -200,6 +200,7 @@ func getTsList(host, body string) (tsList []TsInfo) {
 				}
 				tsList = append(tsList, ts)
 			} else {
+				line = strings.TrimPrefix(line, "/")
 				ts = TsInfo{
 					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
 					Url:  fmt.Sprintf("%s/%s", host, line),
