@@ -6,7 +6,7 @@ on:
       - "*"
 
 env:
-  GO_VERSION: 1.16
+  GO_VERSION: 1.17
   CGO_ENABLED: 0
   GO111MODULE: on
 
@@ -17,6 +17,9 @@ jobs:
       matrix:
         os: [ linux, windows, darwin ]
         arch: [ amd64, arm64, 386 ]
+        exclude:
+          - os: darwin
+            arch: 386
     runs-on: ubuntu-latest
     env:
       GOOS: ${{ matrix.os }}
