@@ -17,6 +17,9 @@ jobs:
       matrix:
         os: [ linux, windows, darwin ]
         arch: [ amd64, arm64, 386 ]
+        include:
+          - os: windows
+            file-extension: ".exe"
         exclude:
           - os: darwin
             arch: 386
@@ -24,6 +27,7 @@ jobs:
     env:
       GOOS: ${{ matrix.os }}
       GOARCH: ${{ matrix.arch }}
+      FILEEXTENSION: ${{ matrix.file-extension }}
     steps:
     - name: Checkout Git repo
       uses: actions/checkout@v4
@@ -41,7 +45,7 @@ jobs:
 
     - name: Build binary
       run: |
-        GOOS=${GOOS} GOARCH=${GOARCH} go build  -o ./Releases/m3u8-${GOOS}-${GOARCH} m3u8-downloader.go
+        GOOS=${GOOS} GOARCH=${GOARCH} go build  -o ./Releases/m3u8-${GOOS}-${GOARCH}${FILEEXTENSION} m3u8-downloader.go
 
     - name: Release
       uses: softprops/action-gh-release@v2
