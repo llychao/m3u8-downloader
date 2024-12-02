@@ -169,6 +169,10 @@ func getM3u8Key(host, html string) (key string) {
 	key = ""
 	for _, line := range lines {
 		if strings.Contains(line, "#EXT-X-KEY") {
+			if !strings.Contains(line, "URI") {
+				continue
+			}
+			fmt.Println("[debug] line_key:",line)
 			uri_pos := strings.Index(line, "URI")
 			quotation_mark_pos := strings.LastIndex(line, "\"")
 			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
@@ -179,9 +183,11 @@ func getM3u8Key(host, html string) (key string) {
 			checkErr(err)
 			if res.StatusCode == 200 {
 				key = res.String()
+				break
 			}
 		}
 	}
+	fmt.Println("[debug] m3u8Host:",host,"m3u8Key:",key)
 	return
 }
 
