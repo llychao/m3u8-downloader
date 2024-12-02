@@ -226,6 +226,9 @@ func getFromFile() string {
 // 下载ts文件
 // @modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
 func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+	if retries <= 0 {
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			//fmt.Println("网络不稳定，正在进行断点持续下载")
