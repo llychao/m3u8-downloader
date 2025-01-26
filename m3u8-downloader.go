@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ var (
 	rFlag   = flag.Bool("r", true, "autoClear:是否自动清除ts文件")
 	sFlag   = flag.Int("s", 0, "InsecureSkipVerify:是否允许不安全的请求(默认0)")
 	spFlag  = flag.String("sp", "", "savePath:文件保存的绝对路径(默认为当前路径,建议默认值)")
+	fFlag   = flag.String("f", "", "filter:要保留的ts片段(默认为空,保留所有片段,非空时,根据ts地址正则匹配)")
 
 	logger *log.Logger
 	ro     = &grequests.RequestOptions{
@@ -89,6 +91,7 @@ func Run() {
 	cookie := *cFlag
 	insecure := *sFlag
 	savePath := *spFlag
+	filter := *fFlag
 
 	ro.Headers["Referer"] = getHost(m3u8Url, "v2")
 	if insecure != 0 {
@@ -121,7 +124,7 @@ func Run() {
 	if ts_key != "" {
 		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
 	}
-	ts_list := getTsList(m3u8Host, m3u8Body)
+	ts_list := getTsList(m3u8Host, m3u8Body, filter)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 
 	// 3、下载ts文件到download_dir
@@ -172,7 +175,7 @@ func getM3u8Key(host, html string) (key string) {
 			if !strings.Contains(line, "URI") {
 				continue
 			}
-			fmt.Println("[debug] line_key:",line)
+			fmt.Println("[debug] line_key:", line)
 			uri_pos := strings.Index(line, "URI")
 			quotation_mark_pos := strings.LastIndex(line, "\"")
 			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
@@ -187,16 +190,22 @@ func getM3u8Key(host, html string) (key string) {
 			}
 		}
 	}
-	fmt.Println("[debug] m3u8Host:",host,"m3u8Key:",key)
+	fmt.Println("[debug] m3u8Host:", host, "m3u8Key:", key)
 	return
 }
 
-func getTsList(host, body string) (tsList []TsInfo) {
+func getTsList(host, body, filter string) (tsList []TsInfo) {
 	lines := strings.Split(body, "\n")
 	index := 0
 	var ts TsInfo
+	filterRegex, err := regexp.Compile(filter)
+	if err != nil {
+		fmt.Println("[warn] 过滤正则有误，请检测f参数:`", filter, "` error:", err)
+		fmt.Println("[info] 本次下载不使用过滤器，进行全量下载")
+		filter = ""
+	}
 	for _, line := range lines {
-		if !strings.HasPrefix(line, "#") && line != "" {
+		if !strings.HasPrefix(line, "#") && line != "" && (filter == "" || filterRegex.MatchString(line)) {
 			//有可能出现的二级嵌套格式的m3u8,请自行转换！
 			index++
 			if strings.HasPrefix(line, "http") {

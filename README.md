@@ -28,6 +28,7 @@ golang 多线程下载直播流m3u8格式的视屏，跨平台。 你只需指�
 - r  autoClear:是否自动清除ts文件 (default true)
 - s  InsecureSkipVerify:是否允许不安全的请求(默认0)
 - sp savePath:文件保存的绝对路径(默认为当前路径,建议默认值)(例如：unix:/Users/xxxx ; windows:C:\Documents)
+- f  filter:要保留的ts片段(默认为空,保留所有片段,非空时,根据ts地址正则匹配)
 ```
 
 默认情况只需要传`u`参数,其他参数保持默认即可。 部分链接可能限制请求频率，可根据实际情况调整 `n` 参数的值。
