@@ -1,29 +1,28 @@
-// @author:llychao<lychao_vip@163.com>
-// @contributor: Junyi<me@junyi.pw>
-// @date:2020-02-18
-// @功能:golang m3u8 video Downloader
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/hex"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/levigross/grequests"
+	"github.com/levigross/grequests/v2"
 )
 
 const (
@@ -57,6 +56,7 @@ var (
 			"Accept-Language": "zh-CN,zh;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5",
 		},
 	}
+	ctx = context.Background()
 )
 
 // TsInfo 用于保存 ts 文件的下载地址和文件名
@@ -74,7 +74,12 @@ func main() {
 }
 
 func Run() {
-	msgTpl := "[功能]:多线程下载直播流m3u8视屏\n[提醒]:下载失败，请使用 -ht=v2 \n[提醒]:下载失败，m3u8 地址可能存在嵌套\n[提醒]:进度条中途下载失败，可重复执行"
+	msgTpl := `[功能]:多线程下载直播流m3u8视屏
+[提醒]:下载失败，请使用 -ht=v2
+[提醒]:下载失败，m3u8 地址可能存在嵌套
+[提醒]:进度条中途下载失败，可重复执行
+[提醒]:系统需要预安装 ffmpeg，用于 ts 转 mp4 转码`
+
 	fmt.Println(msgTpl)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
@@ -117,19 +122,25 @@ func Run() {
 	m3u8Host := getHost(m3u8Url, hostType)
 	m3u8Body := getM3u8Body(m3u8Url)
 	//m3u8Body := getFromFile()
-	ts_key := getM3u8Key(m3u8Host, m3u8Body)
-	if ts_key != "" {
-		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
+	ts_key, ts_iv := getM3u8Key(m3u8Host, m3u8Body)
+	ts_key_hex := hex.EncodeToString(ts_key)
+	ts_iv_hex := hex.EncodeToString(ts_iv)
+	if len(ts_key) != 0 {
+		fmt.Printf("待解密 ts 文件 key : %s\n", ts_key_hex)
+		fmt.Printf("待解密 ts 文件 key : %s\n", ts_key)
+		fmt.Printf("待解密 ts 文件 iv : %s\n", ts_iv_hex)
+		fmt.Printf("待解密 ts 文件 iv : %s\n", ts_iv)
 	}
 	ts_list := getTsList(m3u8Host, m3u8Body)
 	fmt.Println("待下载 ts 文件数量:", len(ts_list))
 
 	// 3、下载ts文件到download_dir
-	downloader(ts_list, maxGoroutines, download_dir, ts_key)
+	downloader(ts_list, maxGoroutines, download_dir, ts_key, ts_iv)
 	if ok := checkTsDownDir(download_dir); !ok {
 		fmt.Printf("\n[Failed] 请检查url地址有效性 \n")
 		return
 	}
+	fmt.Println("开始合并ts文件")
 
 	// 4、合并ts切割文件成mp4文件
 	mv := mergeTs(download_dir)
@@ -158,36 +169,51 @@ func getHost(Url, ht string) (host string) {
 
 // 获取m3u8地址的内容体
 func getM3u8Body(Url string) string {
-	r, err := grequests.Get(Url, ro)
+	r, err := grequests.Get(ctx, Url, grequests.FromRequestOptions(ro))
 	checkErr(err)
 	return r.String()
 }
 
 // 获取m3u8加密的密钥
-func getM3u8Key(host, html string) (key string) {
+func getM3u8Key(host, html string) (key []byte, iv []byte) {
 	lines := strings.Split(html, "\n")
-	key = ""
+	key = []byte{}
+	iv = []byte{}
+	iv_hex := ""
+	// 定义正则表达式模式，用于匹配 IV 和 URI
+	uriRegex := regexp.MustCompile(`URI="([^"]+)"`)
+	ivRegex := regexp.MustCompile(`IV=0x([^,]+)`)
 	for _, line := range lines {
 		if strings.Contains(line, "#EXT-X-KEY") {
 			if !strings.Contains(line, "URI") {
 				continue
 			}
-			fmt.Println("[debug] line_key:",line)
-			uri_pos := strings.Index(line, "URI")
-			quotation_mark_pos := strings.LastIndex(line, "\"")
-			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
-			if !strings.Contains(line, "http") {
-				key_url = fmt.Sprintf("%s/%s", host, key_url)
+			fmt.Println("[debug] line_key:", line)
+			// 提取 IV
+			ivMatches := ivRegex.FindStringSubmatch(line)
+			if len(ivMatches) > 1 {
+				iv_hex = ivMatches[1]
+				iv, _ = hex.DecodeString(iv_hex)
 			}
-			res, err := grequests.Get(key_url, ro)
-			checkErr(err)
-			if res.StatusCode == 200 {
-				key = res.String()
-				break
+
+			// 提取 URI
+			uriMatches := uriRegex.FindStringSubmatch(line)
+			if len(uriMatches) > 1 {
+				key_url := uriMatches[1]
+				if !strings.HasPrefix(key_url, "http") {
+					key_url = fmt.Sprintf("%s/%s", host, key_url)
+				}
+				res, err := grequests.Get(ctx, key_url, grequests.FromRequestOptions(ro))
+				checkErr(err)
+				if res.StatusCode == 200 {
+					key = res.Bytes()
+					break
+				}
 			}
 		}
 	}
-	fmt.Println("[debug] m3u8Host:",host,"m3u8Key:",key)
+	key_hex := hex.EncodeToString(key)
+	fmt.Println("[debug] \nm3u8_host:", host, "\nm3u8_key:", key_hex, "\nm3u8_iv:", iv_hex)
 	return
 }
 
@@ -218,21 +244,13 @@ func getTsList(host, body string) (tsList []TsInfo) {
 	return
 }
 
-func getFromFile() string {
-	data, _ := ioutil.ReadFile("./ts.txt")
-	return string(data)
-}
-
 // 下载ts文件
 // @modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
-func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
-	if retries <= 0 {
-		return
-	}
+func downloadTsFile(ts TsInfo, download_dir string, key []byte, iv []byte, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
 			//fmt.Println("网络不稳定，正在进行断点持续下载")
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, key, iv, retries-1)
 		}
 	}()
 	curr_path_file := fmt.Sprintf("%s/%s", download_dir, ts.Name)
@@ -240,10 +258,10 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		//logger.Println("[warn] File: " + ts.Name + "already exist")
 		return
 	}
-	res, err := grequests.Get(ts.Url, ro)
+	res, err := grequests.Get(ctx, ts.Url, grequests.FromRequestOptions(ro))
 	if err != nil || !res.Ok {
 		if retries > 0 {
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, key, iv, retries-1)
 			return
 		} else {
 			//logger.Printf("[warn] File :%s", ts.Url)
@@ -260,21 +278,23 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	}
 	if len(origData) == 0 || (contentLen > 0 && len(origData) < contentLen) || res.Error != nil {
 		//logger.Println("[warn] File: " + ts.Name + "res origData invalid or err：", res.Error)
-		downloadTsFile(ts, download_dir, key, retries-1)
+		downloadTsFile(ts, download_dir, key, iv, retries-1)
 		return
 	}
 	// 解密出视频 ts 源文件
-	if key != "" {
+	if len(key) != 0 {
 		//解密 ts 文件，算法：aes 128 cbc pack5
-		origData, err = AesDecrypt(origData, []byte(key))
+		origData, err = AesDecrypt(origData, key, iv)
 		if err != nil {
-			downloadTsFile(ts, download_dir, key, retries-1)
+			downloadTsFile(ts, download_dir, key, iv, retries-1)
 			return
 		}
 	}
 	// https://en.wikipedia.org/wiki/MPEG_transport_stream
 	// Some TS files do not start with SyncByte 0x47, they can not be played after merging,
 	// Need to remove the bytes before the SyncByte 0x47(71).
+	// 部分 TS 文件开头并非同步字节（SyncByte） 0x47。当把多个 TS 文件合并成一个文件后，这样的文件可能无法正常播放。
+	// 需要移除同步字节 0x47 之前的所有字节，确保每个 TS 文件都从同步字节 0x47(71) 开始，以此保证合并后的文件能够正常播放。
 	syncByte := uint8(71) //0x47
 	bLen := len(origData)
 	for j := 0; j < bLen; j++ {
@@ -283,11 +303,11 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 			break
 		}
 	}
-	ioutil.WriteFile(curr_path_file, origData, 0666)
+	os.WriteFile(curr_path_file, origData, 0666)
 }
 
 // downloader m3u8 下载器
-func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
+func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key []byte, iv []byte) {
 	retry := 5 //单个ts 下载重试次数
 	var wg sync.WaitGroup
 	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
@@ -296,16 +316,16 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 	for _, ts := range tsList {
 		wg.Add(1)
 		limiter <- struct{}{}
-		go func(ts TsInfo, downloadDir, key string, retryies int) {
+		go func(ts TsInfo, downloadDir string, key []byte, iv []byte, retries int) {
 			defer func() {
 				wg.Done()
 				<-limiter
 			}()
-			downloadTsFile(ts, downloadDir, key, retryies)
+			downloadTsFile(ts, downloadDir, key, iv, retries)
 			downloadCount++
 			DrawProgressBar("Downloading", float32(downloadCount)/float32(tsLen), PROGRESS_WIDTH, ts.Name)
 			return
-		}(ts, downloadDir, key, retry)
+		}(ts, downloadDir, key, iv, retry)
 	}
 	wg.Wait()
 }
@@ -319,10 +339,12 @@ func checkTsDownDir(dir string) bool {
 
 // 合并ts文件
 func mergeTs(downloadDir string) string {
-	mvName := downloadDir + ".mp4"
-	outMv, _ := os.Create(mvName)
+	mvName_ts := downloadDir + ".ts"
+	mvName_mp4 := downloadDir + ".mp4"
+	outMv, _ := os.Create(mvName_ts)
 	defer outMv.Close()
 	writer := bufio.NewWriter(outMv)
+	defer writer.Flush()
 	err := filepath.Walk(downloadDir, func(path string, f os.FileInfo, err error) error {
 		if f == nil {
 			return err
@@ -330,13 +352,20 @@ func mergeTs(downloadDir string) string {
 		if f.IsDir() || filepath.Ext(path) != ".ts" {
 			return nil
 		}
-		bytes, _ := ioutil.ReadFile(path)
-		_, err = writer.Write(bytes)
+		file, err := os.Open(path)
+		defer file.Close()
+		reader := bufio.NewReader(file)
+		_, err = io.Copy(writer, reader)
 		return err
 	})
 	checkErr(err)
-	_ = writer.Flush()
-	return mvName
+
+	cmd := exec.Command("ffmpeg", "-i", mvName_ts, "-c", "copy", mvName_mp4)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	_ = cmd.Run()
+
+	return mvName_mp4
 }
 
 // 进度条
