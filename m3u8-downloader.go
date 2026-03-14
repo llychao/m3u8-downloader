@@ -135,6 +135,11 @@ func Run() {
 
 	// 4、合并ts切割文件成mp4文件
 	mv := mergeTs(download_dir)
+	if mv == "" {
+		fmt.Printf("\n[Failed] 合并视频文件失败 \n")
+		return
+	}
+	
 	if autoClearFlag {
 		//自动清除ts文件目录
 		os.RemoveAll(download_dir)
@@ -329,16 +334,35 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 }
 
 func checkTsDownDir(dir string) bool {
-	if isExist, _ := pathExists(filepath.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
-		return true
+	// 检查目录中是否有任何视频文件（支持多种扩展名）
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return false
 	}
-	return false
+	
+	// 检查是否有视频文件
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f.Name()))
+		// 支持多种可能的视频文件扩展名
+		if ext == ".ts" || ext == ".jpeg" || ext == ".jpg" || ext == ".mp4" || ext == ".m4s" {
+			return true // 找到至少一个视频文件
+		}
+	}
+	
+	return false // 没有找到视频文件
 }
 
 // 合并ts文件
 func mergeTs(downloadDir string) string {
 	mvName := downloadDir + ".mp4"
-	outMv, _ := os.Create(mvName)
+	outMv, err := os.Create(mvName)
+	if err != nil {
+		logger.Printf("无法创建输出文件 %s: %v", mvName, err)
+		return ""
+	}
 	defer outMv.Close()
 	writer := bufio.NewWriter(outMv)
 	
