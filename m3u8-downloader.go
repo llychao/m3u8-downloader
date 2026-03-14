@@ -357,8 +357,7 @@ func checkTsDownDir(dir string) bool {
 
 // 合并ts文件
 func mergeTs(downloadDir string) string {
-	// 输出文件使用.ts扩展名，因为内容是TS流
-	mvName := downloadDir + ".ts"
+	mvName := downloadDir + ".mp4"
 	outMv, err := os.Create(mvName)
 	if err != nil {
 		logger.Printf("无法创建输出文件 %s: %v", mvName, err)
