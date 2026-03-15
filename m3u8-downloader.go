@@ -11,6 +11,7 @@ import (
 	"crypto/cipher"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -133,6 +135,11 @@ func Run() {
 
 	// 4、合并ts切割文件成mp4文件
 	mv := mergeTs(download_dir)
+	if mv == "" {
+		fmt.Printf("\n[Failed] 合并视频文件失败 \n")
+		return
+	}
+	
 	if autoClearFlag {
 		//自动清除ts文件目录
 		os.RemoveAll(download_dir)
@@ -199,20 +206,36 @@ func getTsList(host, body string) (tsList []TsInfo) {
 		if !strings.HasPrefix(line, "#") && line != "" {
 			//有可能出现的二级嵌套格式的m3u8,请自行转换！
 			index++
+			
+			// 提取原始文件名（URL的最后一部分）
+			var originalName string
 			if strings.HasPrefix(line, "http") {
+				// 从完整URL中提取文件名
+				u, err := url.Parse(line)
+				if err == nil {
+					originalName = filepath.Base(u.Path)
+				} else {
+					originalName = fmt.Sprintf(TS_NAME_TEMPLATE, index)
+				}
 				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
+					Name: originalName,
 					Url:  line,
 				}
-				tsList = append(tsList, ts)
 			} else {
 				line = strings.TrimPrefix(line, "/")
+				originalName = filepath.Base(line)
 				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
+					Name: originalName,
 					Url:  fmt.Sprintf("%s/%s", host, line),
 				}
-				tsList = append(tsList, ts)
 			}
+			
+			// 如果文件名没有扩展名，添加.ts扩展名（兼容旧代码）
+			if filepath.Ext(originalName) == "" {
+				ts.Name = fmt.Sprintf(TS_NAME_TEMPLATE, index)
+			}
+			
+			tsList = append(tsList, ts)
 		}
 	}
 	return
@@ -311,30 +334,109 @@ func downloader(tsList []TsInfo, maxGoroutines int, downloadDir string, key stri
 }
 
 func checkTsDownDir(dir string) bool {
-	if isExist, _ := pathExists(filepath.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
-		return true
+	// 检查目录中是否有任何视频文件（支持多种扩展名）
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return false
 	}
-	return false
+	
+	// 检查是否有视频文件
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f.Name()))
+		// 支持多种可能的视频文件扩展名
+		if ext == ".ts" || ext == ".jpeg" || ext == ".jpg" || ext == ".mp4" || ext == ".m4s" {
+			return true // 找到至少一个视频文件
+		}
+	}
+	
+	return false // 没有找到视频文件
 }
 
 // 合并ts文件
 func mergeTs(downloadDir string) string {
 	mvName := downloadDir + ".mp4"
-	outMv, _ := os.Create(mvName)
+	outMv, err := os.Create(mvName)
+	if err != nil {
+		logger.Printf("无法创建输出文件 %s: %v", mvName, err)
+		return ""
+	}
 	defer outMv.Close()
 	writer := bufio.NewWriter(outMv)
-	err := filepath.Walk(downloadDir, func(path string, f os.FileInfo, err error) error {
-		if f == nil {
-			return err
-		}
-		if f.IsDir() || filepath.Ext(path) != ".ts" {
-			return nil
-		}
-		bytes, _ := ioutil.ReadFile(path)
-		_, err = writer.Write(bytes)
-		return err
-	})
+	
+	// 读取目录中的所有ts文件
+	files, err := ioutil.ReadDir(downloadDir)
 	checkErr(err)
+	
+	// 按文件名排序（数字顺序）
+	var tsFiles []string
+	for _, f := range files {
+		ext := strings.ToLower(filepath.Ext(f.Name()))
+		// 支持多种可能的视频文件扩展名
+		if !f.IsDir() && (ext == ".ts" || ext == ".jpeg" || ext == ".jpg" || ext == ".mp4" || ext == ".m4s") {
+			tsFiles = append(tsFiles, f.Name())
+		}
+	}
+	
+	// 按文件名排序（数字顺序）
+	sort.Slice(tsFiles, func(i, j int) bool {
+		// 提取数字部分进行比较，支持多种扩展名
+		nameI := tsFiles[i]
+		nameJ := tsFiles[j]
+		
+		// 移除扩展名
+		nameI = strings.TrimSuffix(nameI, filepath.Ext(nameI))
+		nameJ = strings.TrimSuffix(nameJ, filepath.Ext(nameJ))
+		
+		// 尝试提取数字
+		// 处理像 "video0" 或 "00001" 这样的文件名
+		numI, errI := strconv.Atoi(strings.TrimPrefix(nameI, "video"))
+		numJ, errJ := strconv.Atoi(strings.TrimPrefix(nameJ, "video"))
+		
+		// 如果提取video前缀失败，尝试直接转换
+		if errI != nil {
+			numI, _ = strconv.Atoi(nameI)
+		}
+		if errJ != nil {
+			numJ, _ = strconv.Atoi(nameJ)
+		}
+		
+		return numI < numJ
+	})
+	
+	// 按顺序合并文件
+	for _, tsFile := range tsFiles {
+		path := filepath.Join(downloadDir, tsFile)
+		file, err := os.Open(path)
+		if err != nil {
+			logger.Printf("无法打开文件 %s: %v", path, err)
+			continue
+		}
+		
+		// 使用缓冲区流式读取和写入，避免内存不足
+		buf := make([]byte, 1024*1024) // 1MB缓冲区
+		for {
+			n, err := file.Read(buf)
+			if n > 0 {
+				_, writeErr := writer.Write(buf[:n])
+				if writeErr != nil {
+					file.Close()
+					checkErr(writeErr)
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				file.Close()
+				checkErr(err)
+			}
+		}
+		file.Close()
+	}
+	
 	_ = writer.Flush()
 	return mvName
 }
